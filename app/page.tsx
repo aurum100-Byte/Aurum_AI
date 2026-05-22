@@ -25,21 +25,16 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-white overflow-hidden">
+    <div className="flex flex-col h-screen bg-zinc-950 text-white overflow-hidden">
       {/* 헤더 */}
-      <header className="border-b border-gray-800 px-6 py-3 flex items-center justify-between shrink-0">
+      <header className="border-b border-zinc-800 px-6 py-3 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <span className="font-mono text-green-500 text-sm select-none">▸</span>
-          <h1 className="font-mono text-sm text-gray-200 tracking-widest">
-            AURUM AI
-          </h1>
-          <span className="font-mono text-xs text-gray-500 hidden sm:inline">
-            — 투자 리서치 AI
-          </span>
+          <span className="font-mono text-green-400 text-sm select-none">▸</span>
+          <h1 className="font-mono text-sm text-white tracking-widest">AURUM AI</h1>
+          <span className="font-mono text-xs text-zinc-500 hidden sm:inline">— 투자 리서치 AI</span>
         </div>
 
         <div className="flex items-center gap-1">
-          {/* 탭 */}
           <nav className="flex gap-1 mr-2">
             {(["chat", "journal"] as Tab[]).map((tab) => (
               <button
@@ -47,8 +42,8 @@ export default function Home() {
                 onClick={() => setActiveTab(tab)}
                 className={`font-mono text-xs px-3 py-1.5 border transition-colors ${
                   activeTab === tab
-                    ? "border-green-800 text-green-400 bg-green-950"
-                    : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200"
+                    ? "border-green-700 text-green-400 bg-green-950"
+                    : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
                 }`}
               >
                 {tab === "chat" ? "채팅" : "투자 일지"}
@@ -56,14 +51,13 @@ export default function Home() {
             ))}
           </nav>
 
-          {/* 뉴스 사이드바 토글 (채팅 탭에서만) */}
           {activeTab === "chat" && (
             <button
               onClick={() => setNewsSidebarOpen((prev) => !prev)}
               className={`font-mono text-xs px-3 py-1.5 border transition-colors hidden lg:block ${
                 newsSidebarOpen
-                  ? "border-gray-700 text-gray-400"
-                  : "border-gray-800 text-gray-700"
+                  ? "border-zinc-600 text-zinc-300"
+                  : "border-zinc-800 text-zinc-500"
               }`}
               title="뉴스 사이드바 토글"
             >
@@ -77,7 +71,6 @@ export default function Home() {
       <main className="flex-1 flex overflow-hidden min-h-0">
         {activeTab === "chat" && (
           <>
-            {/* 채팅 영역 */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
               <Chat
                 pendingMessage={pendingMessage}
@@ -85,8 +78,6 @@ export default function Home() {
                 onPendingConsumed={handlePendingConsumed}
               />
             </div>
-
-            {/* 뉴스 사이드바 (데스크톱) */}
             {newsSidebarOpen && (
               <div className="hidden lg:flex flex-col w-80 shrink-0 overflow-hidden">
                 <NewsSidebar />
