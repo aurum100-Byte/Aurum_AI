@@ -33,7 +33,7 @@ export default function Home() {
           <h1 className="font-mono text-sm text-gray-200 tracking-widest">
             AURUM AI
           </h1>
-          <span className="font-mono text-xs text-gray-700 hidden sm:inline">
+          <span className="font-mono text-xs text-gray-500 hidden sm:inline">
             — 투자 리서치 AI
           </span>
         </div>
@@ -48,7 +48,7 @@ export default function Home() {
                 className={`font-mono text-xs px-3 py-1.5 border transition-colors ${
                   activeTab === tab
                     ? "border-green-800 text-green-400 bg-green-950"
-                    : "border-gray-800 text-gray-600 hover:border-gray-700 hover:text-gray-400"
+                    : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200"
                 }`}
               >
                 {tab === "chat" ? "채팅" : "투자 일지"}

@@ -86,10 +86,10 @@ export default function Chat({
       {/* 메시지 영역 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {messages.length === 0 && (
-          <div className="text-gray-600 text-sm font-mono mt-8 space-y-1">
-            <p className="text-green-600">{"// AURUM AI 투자 리서치"}</p>
+          <div className="text-gray-400 text-sm font-mono mt-8 space-y-1">
+            <p className="text-green-400">{"// AURUM AI 투자 리서치"}</p>
             <p>{"// 산업 분석, 종목 발굴, 투자 논리 검토"}</p>
-            <p className="mt-4 text-gray-500">
+            <p className="mt-4 text-gray-300">
               {"> 무엇이든 물어보세요. 반박도 합니다."}
             </p>
           </div>
@@ -97,7 +97,7 @@ export default function Chat({
 
         {messages.map((msg, i) => (
           <div key={i} className={`flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-            <span className="text-xs font-mono text-gray-600">
+            <span className="text-xs font-mono text-gray-400">
               {msg.role === "user" ? "YOU" : "AI"}
             </span>
             <div
@@ -129,12 +129,12 @@ export default function Chat({
       {/* 입력 영역 */}
       <div className="border-t border-gray-800 p-4 space-y-2">
         <div className="flex gap-2">
-          <span className="font-mono text-green-600 self-center text-sm select-none">
+          <span className="font-mono text-green-400 self-center text-sm select-none">
             {">"}
           </span>
           <input
             ref={inputRef}
-            className="flex-1 bg-transparent border-none outline-none font-mono text-sm text-gray-100 placeholder-gray-700"
+            className="flex-1 bg-transparent border-none outline-none font-mono text-sm text-gray-100 placeholder-gray-500"
             placeholder="질문 또는 종목/산업 분석 요청..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -150,7 +150,7 @@ export default function Chat({
           <button
             onClick={() => sendMessage()}
             disabled={loading || !input.trim()}
-            className="px-4 py-1.5 bg-green-900 hover:bg-green-800 disabled:bg-gray-900 disabled:text-gray-700 text-green-300 font-mono text-xs border border-green-800 disabled:border-gray-800 transition-colors"
+            className="px-4 py-1.5 bg-green-900 hover:bg-green-800 disabled:bg-gray-900 disabled:text-gray-600 text-green-300 font-mono text-xs border border-green-800 disabled:border-gray-800 transition-colors"
           >
             SEND
           </button>
@@ -165,7 +165,7 @@ export default function Chat({
           />
           <label
             htmlFor="include-journal"
-            className="text-xs font-mono text-gray-600 cursor-pointer hover:text-gray-400"
+            className="text-xs font-mono text-gray-400 cursor-pointer hover:text-gray-200"
           >
             투자 일지 컨텍스트 포함
           </label>

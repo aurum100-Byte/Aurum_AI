@@ -131,7 +131,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
       <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
         <div>
           <h2 className="font-mono text-sm text-gray-300">INVESTMENT JOURNAL</h2>
-          <p className="font-mono text-xs text-gray-700">
+          <p className="font-mono text-xs text-gray-400">
             {entries.length}개 기록됨
           </p>
         </div>
@@ -144,7 +144,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
           </button>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="font-mono text-xs px-3 py-1.5 border border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300 transition-colors"
+            className="font-mono text-xs px-3 py-1.5 border border-gray-600 text-gray-300 hover:border-gray-500 hover:text-gray-200 transition-colors"
           >
             {showForm ? "닫기" : "+ 새 일지"}
           </button>
@@ -156,11 +156,11 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
         <div className="border-b border-gray-800 bg-gray-950 p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="font-mono text-xs text-gray-600 block mb-1">
+              <label className="font-mono text-xs text-gray-300 block mb-1">
                 제목 *
               </label>
               <input
-                className="w-full bg-gray-900 border border-gray-800 focus:border-green-800 outline-none px-3 py-2 font-mono text-sm text-gray-200 transition-colors"
+                className="w-full bg-gray-900 border border-gray-700 focus:border-green-700 outline-none px-3 py-2 font-mono text-sm text-gray-100 transition-colors placeholder-gray-600"
                 placeholder="예: NVDA 매수 논리 정리"
                 value={form.title}
                 onChange={(e) =>
@@ -171,11 +171,11 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
             </div>
 
             <div>
-              <label className="font-mono text-xs text-gray-600 block mb-1">
+              <label className="font-mono text-xs text-gray-300 block mb-1">
                 내용 *
               </label>
               <textarea
-                className="w-full bg-gray-900 border border-gray-800 focus:border-green-800 outline-none px-3 py-2 font-mono text-sm text-gray-200 transition-colors resize-none"
+                className="w-full bg-gray-900 border border-gray-700 focus:border-green-700 outline-none px-3 py-2 font-mono text-sm text-gray-100 transition-colors resize-none placeholder-gray-600"
                 placeholder="투자 생각, 매수/매도 이유, 시장 해석..."
                 rows={5}
                 value={form.content}
@@ -187,7 +187,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
             </div>
 
             <div>
-              <label className="font-mono text-xs text-gray-600 block mb-2">
+              <label className="font-mono text-xs text-gray-300 block mb-2">
                 태그
               </label>
               <div className="flex flex-wrap gap-1 mb-2">
@@ -198,8 +198,8 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
                     onClick={() => toggleTag(tag)}
                     className={`px-2 py-0.5 font-mono text-xs border transition-colors ${
                       form.tags.includes(tag)
-                        ? "border-green-800 text-green-400 bg-green-950"
-                        : "border-gray-800 text-gray-600 hover:border-gray-700"
+                        ? "border-green-700 text-green-400 bg-green-950"
+                        : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300"
                     }`}
                   >
                     {tag}
@@ -208,7 +208,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
               </div>
               <div className="flex gap-2">
                 <input
-                  className="flex-1 bg-gray-900 border border-gray-800 focus:border-green-800 outline-none px-3 py-1.5 font-mono text-xs text-gray-300 transition-colors"
+                  className="flex-1 bg-gray-900 border border-gray-700 focus:border-green-700 outline-none px-3 py-1.5 font-mono text-xs text-gray-200 transition-colors placeholder-gray-600"
                   placeholder="직접 입력 후 Enter"
                   value={form.tagInput}
                   onChange={(e) =>
@@ -224,7 +224,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
                 <button
                   type="button"
                   onClick={addCustomTag}
-                  className="font-mono text-xs px-3 py-1.5 border border-gray-800 text-gray-600 hover:text-gray-400 transition-colors"
+                  className="font-mono text-xs px-3 py-1.5 border border-gray-700 text-gray-300 hover:text-gray-100 transition-colors"
                 >
                   추가
                 </button>
@@ -234,13 +234,13 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
                   {form.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="px-2 py-0.5 font-mono text-xs border border-green-900 text-green-500 bg-green-950 flex items-center gap-1"
+                      className="px-2 py-0.5 font-mono text-xs border border-green-800 text-green-400 bg-green-950 flex items-center gap-1"
                     >
                       {tag}
                       <button
                         type="button"
                         onClick={() => toggleTag(tag)}
-                        className="text-green-700 hover:text-green-400"
+                        className="text-green-600 hover:text-green-300"
                       >
                         ×
                       </button>
@@ -251,7 +251,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
             </div>
 
             <div>
-              <label className="font-mono text-xs text-gray-600 block mb-2">
+              <label className="font-mono text-xs text-gray-300 block mb-2">
                 확신도 *
               </label>
               <div className="flex gap-2">
@@ -263,7 +263,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
                     className={`px-4 py-1.5 font-mono text-xs border transition-colors ${
                       form.mood === m
                         ? MOOD_STYLE[m] + " bg-gray-900"
-                        : "border-gray-800 text-gray-600 hover:border-gray-700"
+                        : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300"
                     }`}
                   >
                     {m}
@@ -273,14 +273,14 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
             </div>
 
             {error && (
-              <p className="font-mono text-xs text-red-500">{error}</p>
+              <p className="font-mono text-xs text-red-400">{error}</p>
             )}
 
             <div className="flex gap-2">
               <button
                 type="submit"
                 disabled={submitting}
-                className="font-mono text-xs px-4 py-2 bg-green-900 hover:bg-green-800 disabled:bg-gray-900 text-green-300 disabled:text-gray-700 border border-green-800 disabled:border-gray-800 transition-colors"
+                className="font-mono text-xs px-4 py-2 bg-green-900 hover:bg-green-800 disabled:bg-gray-900 text-green-300 disabled:text-gray-600 border border-green-700 disabled:border-gray-800 transition-colors"
               >
                 {submitting ? "저장 중..." : "저장"}
               </button>
@@ -291,7 +291,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
                   setForm(DEFAULT_FORM);
                   setError("");
                 }}
-                className="font-mono text-xs px-4 py-2 border border-gray-800 text-gray-600 hover:text-gray-400 transition-colors"
+                className="font-mono text-xs px-4 py-2 border border-gray-700 text-gray-300 hover:text-gray-100 transition-colors"
               >
                 취소
               </button>
@@ -309,7 +309,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
             className={`px-2 py-0.5 font-mono text-xs border transition-colors ${
               filter === tag
                 ? "border-green-800 text-green-400 bg-green-950"
-                : "border-gray-800 text-gray-600 hover:border-gray-700 hover:text-gray-500"
+                : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300"
             }`}
           >
             {tag}
@@ -320,15 +320,15 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
       {/* 일지 목록 */}
       <div className="flex-1 overflow-y-auto">
         {loading && (
-          <div className="p-6 font-mono text-xs text-gray-700 animate-pulse">
+          <div className="p-6 font-mono text-xs text-gray-400 animate-pulse">
             일지 로딩 중...
           </div>
         )}
 
         {!loading && entries.length === 0 && (
-          <div className="p-6 font-mono text-xs text-gray-700 space-y-1">
+          <div className="p-6 font-mono text-xs text-gray-400 space-y-1">
             <p>기록된 투자 일지가 없습니다.</p>
-            <p className="text-gray-800">
+            <p className="text-gray-500">
               Supabase 설정 후 &apos;+ 새 일지&apos;를 작성해보세요.
             </p>
           </div>
@@ -342,7 +342,7 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="font-mono text-xs text-gray-600">
+                  <span className="font-mono text-xs text-gray-400">
                     {new Date(entry.created_at).toLocaleDateString("ko-KR")}
                   </span>
                   <span
@@ -359,20 +359,20 @@ export default function Journal({ onAIAnalysis }: JournalProps) {
                     {entry.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="font-mono text-xs border border-gray-800 text-gray-600 px-1.5 py-0.5"
+                        className="font-mono text-xs border border-gray-700 text-gray-400 px-1.5 py-0.5"
                       >
                         {tag}
                       </span>
                     ))}
                   </div>
                 )}
-                <p className="font-mono text-xs text-gray-600 leading-relaxed line-clamp-3">
+                <p className="font-mono text-xs text-gray-400 leading-relaxed line-clamp-3">
                   {entry.content}
                 </p>
               </div>
               <button
                 onClick={() => handleDelete(entry.id)}
-                className="font-mono text-xs text-gray-800 hover:text-red-600 transition-colors shrink-0"
+                className="font-mono text-xs text-gray-600 hover:text-red-500 transition-colors shrink-0"
                 title="삭제"
               >
                 ✕

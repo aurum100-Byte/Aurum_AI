@@ -54,16 +54,16 @@ export default function NewsSidebar() {
     <div className="flex flex-col h-full border-l border-gray-800">
       {/* 헤더 */}
       <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-        <span className="font-mono text-xs text-gray-500">
+        <span className="font-mono text-xs text-gray-300">
           MARKET NEWS
           {lastUpdated && (
-            <span className="ml-2 text-gray-700">{lastUpdated}</span>
+            <span className="ml-2 text-gray-500">{lastUpdated}</span>
           )}
         </span>
         <button
           onClick={() => fetchNews(filter)}
           disabled={loading}
-          className="font-mono text-xs text-gray-600 hover:text-green-500 disabled:text-gray-800 transition-colors"
+          className="font-mono text-xs text-gray-400 hover:text-green-400 disabled:text-gray-700 transition-colors"
         >
           {loading ? "..." : "↻"}
         </button>
@@ -78,7 +78,7 @@ export default function NewsSidebar() {
             className={`px-2 py-0.5 font-mono text-xs border transition-colors ${
               filter === ind
                 ? "border-green-800 text-green-400 bg-green-950"
-                : "border-gray-800 text-gray-600 hover:border-gray-700 hover:text-gray-500"
+                : "border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300"
             }`}
           >
             {ind}
@@ -89,18 +89,18 @@ export default function NewsSidebar() {
       {/* 뉴스 목록 */}
       <div className="flex-1 overflow-y-auto">
         {loading && news.length === 0 && (
-          <div className="p-4 font-mono text-xs text-gray-700 animate-pulse">
+          <div className="p-4 font-mono text-xs text-gray-400 animate-pulse">
             뉴스 로딩 중...
           </div>
         )}
 
         {!loading && news.length === 0 && (
-          <div className="p-4 font-mono text-xs text-gray-700 space-y-1">
+          <div className="p-4 font-mono text-xs text-gray-400 space-y-1">
             <p>수집된 뉴스가 없습니다.</p>
-            <p className="text-gray-800">
+            <p className="text-gray-500">
               CRON_SECRET, NEWS_API_KEY 설정 후
             </p>
-            <p className="text-gray-800">/api/news/collect 를 호출하세요.</p>
+            <p className="text-gray-500">/api/news/collect 를 호출하세요.</p>
           </div>
         )}
 
@@ -110,7 +110,7 @@ export default function NewsSidebar() {
             className="px-4 py-3 border-b border-gray-900 hover:bg-gray-900 transition-colors"
           >
             <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono text-xs text-gray-600">
+              <span className="font-mono text-xs text-gray-400">
                 {item.industry}
               </span>
               <span
@@ -127,10 +127,10 @@ export default function NewsSidebar() {
             >
               {item.title}
             </a>
-            <p className="font-mono text-xs text-gray-600 mt-1 leading-snug">
+            <p className="font-mono text-xs text-gray-400 mt-1 leading-snug">
               {item.summary}
             </p>
-            <span className="font-mono text-xs text-gray-800">
+            <span className="font-mono text-xs text-gray-500">
               {new Date(item.created_at).toLocaleDateString("ko-KR")}
             </span>
           </div>
