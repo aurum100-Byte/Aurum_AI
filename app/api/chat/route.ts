@@ -1,40 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { INVESTMENT_SYSTEM_PROMPT } from "@/lib/systemPrompt";
-import { supabase, type NewsItem, type JournalEntry } from "@/lib/supabase";
+import { supabase, type JournalEntry } from "@/lib/supabase";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const INDUSTRY_KEYWORDS = [
-  "AI",
-  "반도체",
-  "전력",
-  "우주",
-  "로봇",
-  "자율주행",
-  "국방",
-  "에너지",
-  "원전",
-];
+async function getLatestDigest(): Promise<string> {
+  if (!supabase) return "";
 
-async function getRelevantNews(userMessage: string): Promise<NewsItem[]> {
-  if (!supabase) return [];
-
-  const matched = INDUSTRY_KEYWORDS.filter((k) =>
-    userMessage.toLowerCase().includes(k.toLowerCase())
-  );
-
-  const query = supabase
+  const { data } = await supabase
     .from("news")
-    .select("*")
-    .order("created_at", { ascending: false });
+    .select("summary, created_at")
+    .eq("industry", "digest")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (matched.length > 0) {
-    query.in("industry", matched);
-  }
+  if (!data) return "";
 
-  const { data } = await query.limit(5);
-  return (data as NewsItem[]) || [];
+  const date = new Date(data.created_at).toLocaleDateString("ko-KR");
+  return `📰 ${date} 기준 시장 동향\n\n${data.summary}`;
 }
 
 async function getJournalContext(): Promise<string> {
@@ -65,31 +50,18 @@ export async function POST(req: NextRequest) {
     const { messages, includeJournal } = await req.json();
 
     if (!Array.isArray(messages) || messages.length === 0) {
-      return NextResponse.json(
-        { error: "메시지가 없습니다." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "메시지가 없습니다." }, { status: 400 });
     }
 
-    const lastUserMsg =
-      [...messages].reverse().find((m) => m.role === "user")?.content || "";
-
-    const [relevantNews, journalContext] = await Promise.all([
-      getRelevantNews(lastUserMsg),
+    const [digest, journalContext] = await Promise.all([
+      getLatestDigest(),
       includeJournal ? getJournalContext() : Promise.resolve(""),
     ]);
 
     let systemPrompt = INVESTMENT_SYSTEM_PROMPT;
 
-    if (relevantNews.length > 0) {
-      systemPrompt +=
-        "\n\n### 최신 관련 뉴스 (컨텍스트로 참고)\n" +
-        relevantNews
-          .map(
-            (n) =>
-              `- [${n.industry} | 중요도: ${n.importance}] ${n.title}\n  ${n.summary}`
-          )
-          .join("\n");
+    if (digest) {
+      systemPrompt += `\n\n---\n### 오늘의 시장 동향 (참고용)\n${digest}`;
     }
 
     if (journalContext) {
@@ -100,12 +72,10 @@ export async function POST(req: NextRequest) {
       model: "gpt-4o",
       messages: [
         { role: "system", content: systemPrompt },
-        ...messages.map(
-          (m: { role: string; content: string }) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          })
-        ),
+        ...messages.map((m: { role: string; content: string }) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })),
       ],
     });
 

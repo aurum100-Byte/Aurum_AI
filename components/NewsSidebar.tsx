@@ -1,59 +1,100 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { NewsItem } from "@/lib/supabase";
 
-const INDUSTRIES = [
-  "전체", "AI", "반도체", "전력 인프라", "우주 산업",
-  "로봇", "자율주행", "국방 기술", "에너지", "원전",
-];
-
-const IMPORTANCE_STYLE: Record<string, string> = {
-  높음: "text-red-400 border-red-800",
-  중간: "text-amber-400 border-amber-800",
-  낮음: "text-zinc-400 border-zinc-700",
+type DigestItem = {
+  id: string;
+  created_at: string;
+  title: string;
+  summary: string;
 };
 
-export default function NewsSidebar() {
-  const [news, setNews] = useState<NewsItem[]>([]);
-  const [filter, setFilter] = useState("전체");
-  const [loading, setLoading] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+function renderDigest(content: string) {
+  const lines = content.split("\n");
+  return lines.map((line, i) => {
+    if (/^\[.+\]$/.test(line.trim())) {
+      return (
+        <p key={i} className="font-mono text-xs text-green-400 mt-4 mb-1 first:mt-0">
+          {line.trim()}
+        </p>
+      );
+    }
+    if (/^\d+\.\s/.test(line.trim())) {
+      const match = line.match(/^(\d+\.\s)(\([^)]+\))?(.*)$/);
+      if (match) {
+        return (
+          <p key={i} className="font-mono text-xs text-zinc-300 mb-2 leading-relaxed pl-1">
+            <span className="text-zinc-500">{match[1]}</span>
+            {match[2] && <span className="text-amber-400">{match[2]}</span>}
+            {match[3]}
+          </p>
+        );
+      }
+    }
+    if (line.trim() === "---" || line.trim() === "") {
+      return null;
+    }
+    return (
+      <p key={i} className="font-mono text-xs text-zinc-500 mb-1">
+        {line}
+      </p>
+    );
+  });
+}
 
-  const fetchNews = useCallback(async (industry: string) => {
+export default function NewsSidebar() {
+  const [digest, setDigest] = useState<DigestItem | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [collecting, setCollecting] = useState(false);
+
+  const fetchDigest = useCallback(async () => {
     setLoading(true);
     try {
-      const url =
-        industry === "전체"
-          ? "/api/news?limit=20"
-          : `/api/news?industry=${encodeURIComponent(industry)}&limit=20`;
-      const res = await fetch(url);
+      const res = await fetch("/api/news?industry=digest&limit=1");
       const data = await res.json();
-      setNews(data.news || []);
-      setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
+      setDigest(data.news?.[0] || null);
     } catch {
-      setNews([]);
+      setDigest(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchNews(filter);
-  }, [filter, fetchNews]);
+    fetchDigest();
+  }, [fetchDigest]);
+
+  async function handleCollect() {
+    setCollecting(true);
+    try {
+      const res = await fetch("/api/news/refresh", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.message) {
+        await fetchDigest();
+      }
+    } catch {
+      // silent fail
+    } finally {
+      setCollecting(false);
+    }
+  }
 
   return (
     <div className="flex flex-col h-full border-l border-zinc-800">
       {/* 헤더 */}
-      <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between shrink-0">
         <span className="font-mono text-xs text-zinc-200 tracking-widest">
-          MARKET NEWS
-          {lastUpdated && (
-            <span className="ml-2 text-zinc-500 tracking-normal">{lastUpdated}</span>
+          MARKET DIGEST
+          {digest && (
+            <span className="ml-2 text-zinc-500 tracking-normal text-xs">
+              {new Date(digest.created_at).toLocaleDateString("ko-KR")}
+            </span>
           )}
         </span>
         <button
-          onClick={() => fetchNews(filter)}
+          onClick={fetchDigest}
           disabled={loading}
           className="font-mono text-sm text-zinc-400 hover:text-green-400 disabled:text-zinc-700 transition-colors"
         >
@@ -61,67 +102,48 @@ export default function NewsSidebar() {
         </button>
       </div>
 
-      {/* 필터 */}
-      <div className="px-3 py-2 border-b border-zinc-800 flex flex-wrap gap-1">
-        {INDUSTRIES.map((ind) => (
-          <button
-            key={ind}
-            onClick={() => setFilter(ind)}
-            className={`px-2 py-0.5 font-mono text-xs border transition-colors ${
-              filter === ind
-                ? "border-green-700 text-green-400 bg-green-950"
-                : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
-            }`}
-          >
-            {ind}
-          </button>
-        ))}
-      </div>
-
-      {/* 뉴스 목록 */}
-      <div className="flex-1 overflow-y-auto">
-        {loading && news.length === 0 && (
-          <div className="p-4 font-mono text-xs text-zinc-400 animate-pulse">
-            뉴스 로딩 중...
-          </div>
+      {/* 콘텐츠 */}
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {loading && (
+          <p className="font-mono text-xs text-zinc-500 animate-pulse">로딩 중...</p>
         )}
 
-        {!loading && news.length === 0 && (
-          <div className="p-4 font-mono text-xs space-y-1">
-            <p className="text-zinc-300">수집된 뉴스가 없습니다.</p>
-            <p className="text-zinc-500">NEWS_API_KEY 설정 후</p>
-            <p className="text-zinc-500">/api/news/collect 를 호출하세요.</p>
-          </div>
-        )}
-
-        {news.map((item) => (
-          <div
-            key={item.id}
-            className="px-4 py-3 border-b border-zinc-900 hover:bg-zinc-900 transition-colors"
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono text-xs text-zinc-400">{item.industry}</span>
-              <span className={`font-mono text-xs border px-1 ${IMPORTANCE_STYLE[item.importance] || IMPORTANCE_STYLE["낮음"]}`}>
-                {item.importance}
-              </span>
-            </div>
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-xs text-zinc-100 hover:text-green-400 transition-colors leading-snug block"
-            >
-              {item.title}
-            </a>
-            <p className="font-mono text-xs text-zinc-400 mt-1 leading-snug">
-              {item.summary}
+        {!loading && !digest && (
+          <div className="space-y-3">
+            <p className="font-mono text-xs text-zinc-300">수집된 뉴스 요약이 없습니다.</p>
+            <p className="font-mono text-xs text-zinc-500">
+              아래 버튼으로 지금 바로 수집할 수 있어요.
             </p>
-            <span className="font-mono text-xs text-zinc-600">
-              {new Date(item.created_at).toLocaleDateString("ko-KR")}
-            </span>
+            <button
+              onClick={handleCollect}
+              disabled={collecting}
+              className="font-mono text-xs px-3 py-1.5 border border-green-800 text-green-400 hover:bg-green-950 disabled:text-zinc-600 disabled:border-zinc-800 transition-colors w-full"
+            >
+              {collecting ? "수집 중... (약 30초)" : "뉴스 지금 수집하기"}
+            </button>
           </div>
-        ))}
+        )}
+
+        {!loading && digest && (
+          <div>
+            <p className="font-mono text-xs text-zinc-500 mb-3">{digest.title}</p>
+            {renderDigest(digest.summary)}
+          </div>
+        )}
       </div>
+
+      {/* 하단 수집 버튼 */}
+      {digest && (
+        <div className="px-4 py-3 border-t border-zinc-800 shrink-0">
+          <button
+            onClick={handleCollect}
+            disabled={collecting}
+            className="font-mono text-xs px-3 py-1.5 border border-zinc-700 text-zinc-400 hover:border-green-800 hover:text-green-400 disabled:text-zinc-700 disabled:border-zinc-800 transition-colors w-full"
+          >
+            {collecting ? "수집 중... (약 30초)" : "새로 수집하기"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

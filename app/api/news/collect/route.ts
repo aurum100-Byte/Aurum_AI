@@ -4,71 +4,94 @@ import { supabase } from "@/lib/supabase";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const KEYWORDS = [
-  { query: "artificial intelligence AI LLM", industry: "AI" },
-  { query: "semiconductor chip TSMC NVIDIA AMD", industry: "반도체" },
-  { query: "power grid electricity infrastructure data center", industry: "전력 인프라" },
-  { query: "space industry SpaceX satellite rocket launch", industry: "우주 산업" },
-  { query: "robotics humanoid robot automation Boston Dynamics", industry: "로봇" },
-  { query: "autonomous driving self-driving vehicle Waymo Tesla", industry: "자율주행" },
-  { query: "defense technology military drone weapon", industry: "국방 기술" },
-  { query: "renewable energy solar wind battery storage", industry: "에너지" },
-  { query: "nuclear energy nuclear power reactor SMR", industry: "원전" },
-];
+const QUERIES = {
+  macro: "interest rate inflation Federal Reserve GDP recession central bank trade war currency",
+  us: "US stock market S&P 500 Nasdaq earnings Wall Street economy forecast",
+  korea: "KOSPI Korea stock market Samsung Hyundai economy exports",
+  china: "China stock market Shanghai CSI economy exports manufacturing",
+};
 
-async function fetchArticles(query: string): Promise<
-  { title: string; description: string; url: string }[]
-> {
+async function fetchNews(query: string, pageSize = 5) {
   const apiKey = process.env.NEWS_API_KEY;
   if (!apiKey) return [];
 
-  const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=publishedAt&pageSize=3&apiKey=${apiKey}`;
+  const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=publishedAt&pageSize=${pageSize}&apiKey=${apiKey}`;
   const res = await fetch(url, { next: { revalidate: 0 } });
   if (!res.ok) return [];
 
   const data = await res.json();
-  return (data.articles || []).filter(
-    (a: { title?: string; url?: string }) => a.title && a.url
-  );
+  return (data.articles || [])
+    .filter((a: { title?: string; description?: string }) => a.title && a.description)
+    .map((a: { title: string; description: string }) => ({
+      title: a.title,
+      description: a.description,
+    }));
 }
 
-async function summarize(
-  title: string,
-  description: string
-): Promise<{ summary: string; importance: "높음" | "중간" | "낮음" }> {
+function formatArticles(articles: { title: string; description: string }[]) {
+  return articles.map((a) => `- ${a.title}\n  ${a.description}`).join("\n");
+}
+
+async function generateDigest(
+  macro: { title: string; description: string }[],
+  us: { title: string; description: string }[],
+  korea: { title: string; description: string }[],
+  china: { title: string; description: string }[]
+): Promise<string> {
+  const prompt = `다음 뉴스들을 투자 관점에서 분석해서 아래 형식으로 한국어 요약을 만들어줘.
+
+경제/주식 시장에 실질적으로 영향을 줄 수 있는 뉴스만 선별해서 포함해.
+각 뉴스에서 핵심 키워드를 추출하고 1~2줄로 간결하게 요약해.
+투자자 입장에서 의미있는 내용 위주로 써줘.
+
+출력 형식 (정확히 이 형식으로):
+[거시경제]
+1. (핵심키워드) 요약 1~2줄
+(최대 5개, 없으면 생략)
+
+[미국 시장]
+1. (핵심키워드) 요약 1~2줄
+2. (핵심키워드) 요약 1~2줄
+3. (핵심키워드) 요약 1~2줄
+
+[한국 시장]
+1. (핵심키워드) 요약 1~2줄
+2. (핵심키워드) 요약 1~2줄
+3. (핵심키워드) 요약 1~2줄
+
+[중국 시장]
+1. (핵심키워드) 요약 1~2줄
+2. (핵심키워드) 요약 1~2줄
+3. (핵심키워드) 요약 1~2줄
+
+---
+
+수집된 뉴스:
+
+[거시경제 뉴스]
+${formatArticles(macro)}
+
+[미국 시장 뉴스]
+${formatArticles(us)}
+
+[한국 시장 뉴스]
+${formatArticles(korea)}
+
+[중국 시장 뉴스]
+${formatArticles(china)}`;
+
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-4o",
     messages: [
       {
         role: "system",
-        content:
-          "투자 관점에서 뉴스를 분석하는 AI입니다. 반드시 JSON으로만 답변하세요.",
+        content: "투자 전문 애널리스트로서 뉴스를 분석하고 투자자에게 유용한 형식으로 요약합니다.",
       },
-      {
-        role: "user",
-        content: `다음 뉴스를 투자 관점에서 분석해주세요.
-제목: ${title}
-내용: ${description || "(내용 없음)"}
-
-JSON 형식으로만 답변:
-{"summary":"핵심 내용 1-2줄 (한국어)","importance":"높음|중간|낮음"}`,
-      },
+      { role: "user", content: prompt },
     ],
-    response_format: { type: "json_object" },
   });
 
-  try {
-    const parsed = JSON.parse(response.choices[0].message.content || "{}");
-    return {
-      summary: parsed.summary || description?.substring(0, 100) || "",
-      importance: parsed.importance || "중간",
-    };
-  } catch {
-    return {
-      summary: description?.substring(0, 100) || "",
-      importance: "중간",
-    };
-  }
+  return response.choices[0].message.content || "";
 }
 
 export async function GET(req: NextRequest) {
@@ -80,55 +103,49 @@ export async function GET(req: NextRequest) {
   }
 
   if (!supabase) {
-    return NextResponse.json(
-      { error: "Supabase가 설정되지 않았습니다." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Supabase가 설정되지 않았습니다." }, { status: 500 });
   }
 
-  const results = { collected: 0, skipped: 0, errors: 0 };
+  try {
+    // 뉴스 수집
+    const [macro, us, korea, china] = await Promise.all([
+      fetchNews(QUERIES.macro, 8),
+      fetchNews(QUERIES.us, 6),
+      fetchNews(QUERIES.korea, 6),
+      fetchNews(QUERIES.china, 6),
+    ]);
 
-  for (const { query, industry } of KEYWORDS) {
-    try {
-      const articles = await fetchArticles(query);
+    // GPT 다이제스트 생성
+    const digest = await generateDigest(macro, us, korea, china);
 
-      for (const article of articles.slice(0, 2)) {
-        const { data: existing } = await supabase
-          .from("news")
-          .select("id")
-          .eq("url", article.url)
-          .maybeSingle();
-
-        if (existing) {
-          results.skipped++;
-          continue;
-        }
-
-        const { summary, importance } = await summarize(
-          article.title,
-          article.description || ""
-        );
-
-        const { error } = await supabase.from("news").insert({
-          title: article.title,
-          summary,
-          industry,
-          importance,
-          url: article.url,
-        });
-
-        if (error) {
-          console.error(`Insert error for ${article.url}:`, error);
-          results.errors++;
-        } else {
-          results.collected++;
-        }
-      }
-    } catch (err) {
-      console.error(`Failed to process ${industry}:`, err);
-      results.errors++;
+    if (!digest) {
+      return NextResponse.json({ error: "다이제스트 생성 실패" }, { status: 500 });
     }
-  }
 
-  return NextResponse.json({ message: "뉴스 수집 완료", ...results });
+    // Supabase 저장
+    const today = new Date().toLocaleDateString("ko-KR", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+    });
+
+    const { error } = await supabase.from("news").insert({
+      title: `일간 시장 요약 — ${today}`,
+      summary: digest,
+      industry: "digest",
+      importance: "높음",
+      url: "-",
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      message: "뉴스 수집 및 다이제스트 생성 완료",
+      collected: macro.length + us.length + korea.length + china.length,
+      digest_preview: digest.substring(0, 200) + "...",
+    });
+  } catch (err) {
+    console.error("뉴스 수집 오류:", err);
+    return NextResponse.json({ error: "수집 중 오류 발생" }, { status: 500 });
+  }
 }
