@@ -4,7 +4,7 @@ import { supabase } from "./supabase";
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const QUERIES = {
-  macro: "interest rate inflation Federal Reserve GDP recession central bank trade war currency",
+  macro: "Federal Reserve interest rate inflation GDP economy recession trade tariff dollar bond yield",
   us: "US stock market S&P 500 Nasdaq earnings Wall Street economy forecast",
   industry: "AI semiconductor electric vehicle renewable energy robotics defense biotech space technology sector",
 };
@@ -44,14 +44,16 @@ async function generateDigest(
 ): Promise<string> {
   const prompt = `다음 뉴스들을 투자 관점에서 분석해서 아래 형식으로 한국어 요약을 만들어줘.
 
-경제/주식 시장에 실질적으로 영향을 줄 수 있는 뉴스만 선별해서 포함해.
-각 뉴스에서 핵심 키워드를 추출하고 1~2줄로 간결하게 요약해.
-투자자 입장에서 의미있는 내용 위주로 써줘.
+규칙:
+- 각 섹션 반드시 3개씩, 총 9개 작성. 뉴스가 부족하면 수집된 내용을 바탕으로 추론해서라도 3개 채워줘.
+- 각 항목은 (핵심키워드)와 1~2줄 요약으로 구성.
+- 투자자 관점에서 실질적으로 의미있는 내용 위주로.
 
-출력 형식 (정확히 이 형식으로):
+출력 형식 (정확히 이 형식으로, 다른 말 없이):
 [거시경제]
 1. (핵심키워드) 요약 1~2줄
-(최대 5개, 없으면 생략)
+2. (핵심키워드) 요약 1~2줄
+3. (핵심키워드) 요약 1~2줄
 
 [미국 시장]
 1. (핵심키워드) 요약 1~2줄
@@ -59,8 +61,6 @@ async function generateDigest(
 3. (핵심키워드) 요약 1~2줄
 
 [주목 산업]
-지금 투자자들이 주목해야 할 산업 테마 3개를 골라서 요약해줘.
-어떤 산업인지 명확히 쓰고, 왜 지금 주목받는지 1~2줄로 설명해.
 1. (산업명) 요약 1~2줄
 2. (산업명) 요약 1~2줄
 3. (산업명) 요약 1~2줄
