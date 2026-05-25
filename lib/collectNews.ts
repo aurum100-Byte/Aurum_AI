@@ -134,7 +134,7 @@ export async function runNewsCollection(): Promise<{
     summary: digest,
     industry: "digest",
     importance: "높음",
-    url: "-",
+    url: `digest-${new Date().toISOString()}`,
   });
 
   if (error) {
