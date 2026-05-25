@@ -46,6 +46,7 @@ export default function NewsSidebar() {
   const [digest, setDigest] = useState<DigestItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [collecting, setCollecting] = useState(false);
+  const [collectError, setCollectError] = useState<string | null>(null);
 
   const fetchDigest = useCallback(async () => {
     setLoading(true);
@@ -66,16 +67,21 @@ export default function NewsSidebar() {
 
   async function handleCollect() {
     setCollecting(true);
+    setCollectError(null);
     try {
       const res = await fetch("/api/news/refresh", {
         method: "POST",
       });
       const data = await res.json();
+      if (!res.ok) {
+        setCollectError(data.error || "수집 중 오류가 발생했습니다.");
+        return;
+      }
       if (data.message) {
         await fetchDigest();
       }
     } catch {
-      // silent fail
+      setCollectError("네트워크 오류가 발생했습니다.");
     } finally {
       setCollecting(false);
     }
@@ -114,12 +120,15 @@ export default function NewsSidebar() {
             <p className="font-mono text-xs text-zinc-500">
               아래 버튼으로 지금 바로 수집할 수 있어요.
             </p>
+            {collectError && (
+              <p className="font-mono text-xs text-red-400 break-words">{collectError}</p>
+            )}
             <button
               onClick={handleCollect}
               disabled={collecting}
               className="font-mono text-xs px-3 py-1.5 border border-green-800 text-green-400 hover:bg-green-950 disabled:text-zinc-600 disabled:border-zinc-800 transition-colors w-full"
             >
-              {collecting ? "수집 중... (약 30초)" : "뉴스 지금 수집하기"}
+              {collecting ? "수집 중... (약 60초)" : "뉴스 지금 수집하기"}
             </button>
           </div>
         )}
@@ -134,13 +143,16 @@ export default function NewsSidebar() {
 
       {/* 하단 수집 버튼 */}
       {digest && (
-        <div className="px-4 py-3 border-t border-zinc-800 shrink-0">
+        <div className="px-4 py-3 border-t border-zinc-800 shrink-0 space-y-2">
+          {collectError && (
+            <p className="font-mono text-xs text-red-400 break-words">{collectError}</p>
+          )}
           <button
             onClick={handleCollect}
             disabled={collecting}
             className="font-mono text-xs px-3 py-1.5 border border-zinc-700 text-zinc-400 hover:border-green-800 hover:text-green-400 disabled:text-zinc-700 disabled:border-zinc-800 transition-colors w-full"
           >
-            {collecting ? "수집 중... (약 30초)" : "새로 수집하기"}
+            {collecting ? "수집 중... (약 60초)" : "새로 수집하기"}
           </button>
         </div>
       )}
