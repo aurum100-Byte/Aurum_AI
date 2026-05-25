@@ -6,8 +6,7 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const QUERIES = {
   macro: "interest rate inflation Federal Reserve GDP recession central bank trade war currency",
   us: "US stock market S&P 500 Nasdaq earnings Wall Street economy forecast",
-  korea: "KOSPI Korea stock market Samsung Hyundai economy exports",
-  china: "China stock market Shanghai CSI economy exports manufacturing",
+  industry: "AI semiconductor electric vehicle renewable energy robotics defense biotech space technology sector",
 };
 
 type Article = { title: string; description: string };
@@ -41,8 +40,7 @@ function formatArticles(articles: Article[]): string {
 async function generateDigest(
   macro: Article[],
   us: Article[],
-  korea: Article[],
-  china: Article[]
+  industry: Article[]
 ): Promise<string> {
   const prompt = `다음 뉴스들을 투자 관점에서 분석해서 아래 형식으로 한국어 요약을 만들어줘.
 
@@ -60,15 +58,12 @@ async function generateDigest(
 2. (핵심키워드) 요약 1~2줄
 3. (핵심키워드) 요약 1~2줄
 
-[한국 시장]
-1. (핵심키워드) 요약 1~2줄
-2. (핵심키워드) 요약 1~2줄
-3. (핵심키워드) 요약 1~2줄
-
-[중국 시장]
-1. (핵심키워드) 요약 1~2줄
-2. (핵심키워드) 요약 1~2줄
-3. (핵심키워드) 요약 1~2줄
+[주목 산업]
+지금 투자자들이 주목해야 할 산업 테마 3개를 골라서 요약해줘.
+어떤 산업인지 명확히 쓰고, 왜 지금 주목받는지 1~2줄로 설명해.
+1. (산업명) 요약 1~2줄
+2. (산업명) 요약 1~2줄
+3. (산업명) 요약 1~2줄
 
 ---
 
@@ -80,11 +75,8 @@ ${formatArticles(macro)}
 [미국 시장 뉴스]
 ${formatArticles(us)}
 
-[한국 시장 뉴스]
-${formatArticles(korea)}
-
-[중국 시장 뉴스]
-${formatArticles(china)}`;
+[산업 트렌드 뉴스]
+${formatArticles(industry)}`;
 
   const response = await client.chat.completions.create({
     model: "gpt-4o",
@@ -110,14 +102,13 @@ export async function runNewsCollection(): Promise<{
     throw new Error("Supabase가 설정되지 않았습니다.");
   }
 
-  const [macro, us, korea, china] = await Promise.all([
+  const [macro, us, industry] = await Promise.all([
     fetchNews(QUERIES.macro, 8),
     fetchNews(QUERIES.us, 6),
-    fetchNews(QUERIES.korea, 6),
-    fetchNews(QUERIES.china, 6),
+    fetchNews(QUERIES.industry, 8),
   ]);
 
-  const digest = await generateDigest(macro, us, korea, china);
+  const digest = await generateDigest(macro, us, industry);
 
   if (!digest) {
     throw new Error("다이제스트 생성 실패");
@@ -143,7 +134,7 @@ export async function runNewsCollection(): Promise<{
 
   return {
     message: "뉴스 수집 및 다이제스트 생성 완료",
-    collected: macro.length + us.length + korea.length + china.length,
+    collected: macro.length + us.length + industry.length,
     digest_preview: digest.substring(0, 200) + "...",
   };
 }
