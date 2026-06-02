@@ -19,6 +19,21 @@ export type NewsItem = {
   url: string;
 };
 
+export type ConversationEntry = {
+  id: string;
+  created_at: string;
+  title: string;
+  summary: string;
+};
+
+export type MessageEntry = {
+  id: string;
+  conversation_id: string;
+  created_at: string;
+  role: "user" | "assistant";
+  content: string;
+};
+
 function createSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

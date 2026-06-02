@@ -45,17 +45,44 @@ async function getJournalContext(): Promise<string> {
   );
 }
 
+async function getPreviousSummaries(currentConvId?: string): Promise<string> {
+  if (!supabase) return "";
+
+  let query = supabase
+    .from("conversations")
+    .select("title, summary, created_at")
+    .not("summary", "is", null)
+    .neq("summary", "")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (currentConvId) {
+    query = query.neq("id", currentConvId);
+  }
+
+  const { data } = await query;
+  if (!data || data.length === 0) return "";
+
+  return (
+    "\n\n### 이전 대화 기억 (참고용)\n" +
+    data
+      .map((c, i) => `[대화 ${i + 1}: ${c.title}]\n${c.summary}`)
+      .join("\n\n")
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { messages, includeJournal } = await req.json();
+    const { messages, includeJournal, conversationId } = await req.json();
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: "메시지가 없습니다." }, { status: 400 });
     }
 
-    const [digest, journalContext] = await Promise.all([
+    const [digest, journalContext, prevSummaries] = await Promise.all([
       getLatestDigest(),
       includeJournal ? getJournalContext() : Promise.resolve(""),
+      getPreviousSummaries(conversationId),
     ]);
 
     let systemPrompt = INVESTMENT_SYSTEM_PROMPT;
@@ -66,6 +93,10 @@ export async function POST(req: NextRequest) {
 
     if (journalContext) {
       systemPrompt += journalContext;
+    }
+
+    if (prevSummaries) {
+      systemPrompt += prevSummaries;
     }
 
     const response = await client.chat.completions.create({

@@ -8,12 +8,18 @@ type Message = {
 };
 
 type ChatProps = {
+  conversationId: string | null;
+  onConversationCreated?: (id: string) => void;
+  onRefreshSidebar?: () => void;
   pendingMessage?: string;
   pendingIncludeJournal?: boolean;
   onPendingConsumed?: () => void;
 };
 
 export default function Chat({
+  conversationId,
+  onConversationCreated,
+  onRefreshSidebar,
   pendingMessage,
   pendingIncludeJournal,
   onPendingConsumed,
@@ -21,9 +27,39 @@ export default function Chat({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [includeJournal, setIncludeJournal] = useState(false);
+  const [activeConvId, setActiveConvId] = useState<string | null>(conversationId);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // prop → 로컬 state 동기화
+  useEffect(() => {
+    setActiveConvId(conversationId);
+  }, [conversationId]);
+
+  // activeConvId 변경 시 메시지 로드
+  useEffect(() => {
+    if (!activeConvId) {
+      setMessages([]);
+      return;
+    }
+    setLoadingHistory(true);
+    fetch(`/api/conversations/${activeConvId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.messages) {
+          setMessages(
+            data.messages.map((m: { role: string; content: string }) => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+            }))
+          );
+        }
+      })
+      .catch(() => setMessages([]))
+      .finally(() => setLoadingHistory(false));
+  }, [activeConvId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -35,6 +71,7 @@ export default function Chat({
       sendMessage(pendingMessage, pendingIncludeJournal ?? false);
       onPendingConsumed?.();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingMessage]);
 
   async function sendMessage(
@@ -51,21 +88,77 @@ export default function Chat({
     setMessages(nextMessages);
     setLoading(true);
 
+    const isFirstMessage = messages.length === 0;
+
+    // 대화 없으면 새로 생성
+    let convId = activeConvId;
+    if (!convId) {
+      try {
+        const res = await fetch("/api/conversations", { method: "POST" });
+        const data = await res.json();
+        convId = data.conversation?.id ?? null;
+        if (convId) {
+          setActiveConvId(convId);
+          onConversationCreated?.(convId);
+        }
+      } catch {
+        // DB 저장 없이 계속
+      }
+    }
+
+    // 사용자 메시지 저장 (fire-and-forget)
+    if (convId) {
+      fetch(`/api/conversations/${convId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "user", content: trimmed }),
+      }).catch(() => {});
+    }
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextMessages, includeJournal: withJournal }),
+        body: JSON.stringify({
+          messages: nextMessages,
+          includeJournal: withJournal,
+          conversationId: convId,
+        }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+
+      const reply = data.reply as string;
+      setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
+
+      // AI 응답 저장 (fire-and-forget)
+      if (convId) {
+        fetch(`/api/conversations/${convId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "assistant", content: reply }),
+        }).catch(() => {});
+      }
+
+      // 첫 메시지 후 제목 자동 생성 (fire-and-forget)
+      if (convId && isFirstMessage) {
+        fetch(`/api/conversations/${convId}/title`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ firstMessage: trimmed }),
+        })
+          .then(() => onRefreshSidebar?.())
+          .catch(() => {});
+      }
     } catch (err) {
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: err instanceof Error ? err.message : "오류가 발생했습니다. 다시 시도해주세요.",
+          content:
+            err instanceof Error
+              ? err.message
+              : "오류가 발생했습니다. 다시 시도해주세요.",
         },
       ]);
     } finally {
@@ -78,7 +171,13 @@ export default function Chat({
     <div className="flex flex-col h-full">
       {/* 메시지 영역 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-        {messages.length === 0 && (
+        {loadingHistory && (
+          <p className="font-mono text-xs text-zinc-500 animate-pulse mt-8">
+            대화 불러오는 중...
+          </p>
+        )}
+
+        {!loadingHistory && messages.length === 0 && (
           <div className="font-mono text-sm mt-8 space-y-1">
             <p className="text-green-400">{"// AURUM AI 투자 리서치"}</p>
             <p className="text-zinc-400">{"// 산업 분석, 종목 발굴, 투자 논리 검토"}</p>
@@ -87,8 +186,17 @@ export default function Chat({
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} className={`flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-            <span className={`text-xs font-mono ${msg.role === "user" ? "text-zinc-400" : "text-green-500"}`}>
+          <div
+            key={i}
+            className={`flex flex-col gap-1 ${
+              msg.role === "user" ? "items-end" : "items-start"
+            }`}
+          >
+            <span
+              className={`text-xs font-mono ${
+                msg.role === "user" ? "text-zinc-400" : "text-green-500"
+              }`}
+            >
               {msg.role === "user" ? "YOU" : "AI"}
             </span>
             <div
@@ -107,7 +215,9 @@ export default function Chat({
           <div className="flex flex-col items-start gap-1">
             <span className="text-xs font-mono text-green-500">AI</span>
             <div className="bg-gray-900 border border-gray-800 border-l-2 border-l-green-700 px-4 py-3 rounded-tr-lg rounded-bl-lg rounded-br-lg">
-              <span className="font-mono text-sm text-green-400 animate-pulse">분석 중...</span>
+              <span className="font-mono text-sm text-green-400 animate-pulse">
+                분석 중...
+              </span>
             </div>
           </div>
         )}
@@ -118,7 +228,9 @@ export default function Chat({
       {/* 입력 영역 */}
       <div className="border-t border-zinc-800 p-4 space-y-2">
         <div className="flex gap-2">
-          <span className="font-mono text-green-400 self-center text-sm select-none">{">"}</span>
+          <span className="font-mono text-green-400 self-center text-sm select-none">
+            {">"}
+          </span>
           <input
             ref={inputRef}
             className="flex-1 bg-transparent border-none outline-none font-mono text-sm text-zinc-100 placeholder-zinc-500"
