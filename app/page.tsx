@@ -3,10 +3,17 @@
 import { useState, useCallback } from "react";
 import Chat from "@/components/Chat";
 import NewsSidebar from "@/components/NewsSidebar";
+import NewsPage from "@/components/NewsPage";
 import Journal from "@/components/Journal";
 import ConversationSidebar from "@/components/ConversationSidebar";
 
-type Tab = "chat" | "journal";
+type Tab = "chat" | "news" | "journal";
+
+const TAB_LABELS: Record<Tab, string> = {
+  chat: "채팅",
+  news: "뉴스",
+  journal: "투자 일지",
+};
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("chat");
@@ -14,7 +21,6 @@ export default function Home() {
   const [pendingIncludeJournal, setPendingIncludeJournal] = useState(false);
   const [newsSidebarOpen, setNewsSidebarOpen] = useState(true);
 
-  // 대화 기록 관련 state
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
 
@@ -31,7 +37,6 @@ export default function Home() {
     setPendingIncludeJournal(false);
   }, []);
 
-  // 새 대화 시작: 현재 대화 요약 생성 후 초기화
   const handleNewConversation = useCallback(() => {
     if (currentConversationId) {
       fetch(`/api/conversations/${currentConversationId}/summarize`, {
@@ -42,7 +47,6 @@ export default function Home() {
     setSidebarRefreshKey((k) => k + 1);
   }, [currentConversationId]);
 
-  // 대화 선택: 이전 대화 요약 후 전환
   const handleSelectConversation = useCallback(
     (id: string) => {
       if (currentConversationId && currentConversationId !== id) {
@@ -55,7 +59,6 @@ export default function Home() {
     [currentConversationId]
   );
 
-  // Chat에서 새 대화가 DB에 생성됐을 때
   const handleConversationCreated = useCallback((id: string) => {
     setCurrentConversationId(id);
     setSidebarRefreshKey((k) => k + 1);
@@ -79,7 +82,7 @@ export default function Home() {
 
         <div className="flex items-center gap-1">
           <nav className="flex gap-1 mr-2">
-            {(["chat", "journal"] as Tab[]).map((tab) => (
+            {(["chat", "news", "journal"] as Tab[]).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -89,7 +92,7 @@ export default function Home() {
                     : "border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-white"
                 }`}
               >
-                {tab === "chat" ? "채팅" : "투자 일지"}
+                {TAB_LABELS[tab]}
               </button>
             ))}
           </nav>
@@ -112,9 +115,9 @@ export default function Home() {
 
       {/* 메인 콘텐츠 */}
       <main className="flex-1 flex overflow-hidden min-h-0">
+        {/* 채팅 탭 */}
         {activeTab === "chat" && (
           <>
-            {/* 대화 목록 사이드바 */}
             <div className="hidden md:flex flex-col w-52 shrink-0 overflow-hidden">
               <ConversationSidebar
                 currentId={currentConversationId}
@@ -123,8 +126,6 @@ export default function Home() {
                 refreshKey={sidebarRefreshKey}
               />
             </div>
-
-            {/* 채팅 */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
               <Chat
                 conversationId={currentConversationId}
@@ -135,8 +136,6 @@ export default function Home() {
                 onPendingConsumed={handlePendingConsumed}
               />
             </div>
-
-            {/* 뉴스 사이드바 */}
             {newsSidebarOpen && (
               <div className="hidden lg:flex flex-col w-80 shrink-0 overflow-hidden">
                 <NewsSidebar />
@@ -145,6 +144,14 @@ export default function Home() {
           </>
         )}
 
+        {/* 뉴스 탭 */}
+        {activeTab === "news" && (
+          <div className="flex-1 overflow-hidden">
+            <NewsPage />
+          </div>
+        )}
+
+        {/* 투자 일지 탭 */}
         {activeTab === "journal" && (
           <div className="flex-1 overflow-hidden">
             <Journal onAIAnalysis={handleAIAnalysis} />
