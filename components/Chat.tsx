@@ -31,7 +31,7 @@ export default function Chat({
   const [includeJournal, setIncludeJournal] = useState(false);
   const [activeConvId, setActiveConvId] = useState<string | null>(conversationId);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // prop → 로컬 state 동기화
   useEffect(() => {
@@ -64,6 +64,14 @@ export default function Chat({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // 입력창 높이 자동 조절
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }, [input]);
 
   useEffect(() => {
     if (pendingMessage) {
@@ -231,9 +239,10 @@ export default function Chat({
           <span className="font-mono text-green-400 self-center text-sm select-none">
             {">"}
           </span>
-          <input
+          <textarea
             ref={inputRef}
-            className="flex-1 bg-transparent border-none outline-none font-mono text-sm text-zinc-100 placeholder-zinc-500"
+            rows={1}
+            className="flex-1 bg-transparent border-none outline-none font-mono text-sm text-zinc-100 placeholder-zinc-500 resize-none overflow-y-auto leading-relaxed"
             placeholder="질문 또는 종목/산업 분석 요청..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
