@@ -242,7 +242,7 @@ export default function Chat({
           <textarea
             ref={inputRef}
             rows={1}
-            className="flex-1 bg-transparent border-none outline-none font-mono text-sm text-zinc-100 placeholder-zinc-500 resize-none overflow-y-auto leading-relaxed"
+            className="flex-1 max-w-[78%] bg-transparent border-none outline-none font-mono text-sm text-zinc-100 placeholder-zinc-500 resize-none overflow-y-auto leading-relaxed"
             placeholder="질문 또는 종목/산업 분석 요청..."
             value={input}
             onChange={(e) => setInput(e.target.value)}
