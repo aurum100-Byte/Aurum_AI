@@ -235,30 +235,32 @@ export default function Chat({
 
       {/* 입력 영역 */}
       <div className="border-t border-zinc-800 p-4 space-y-2">
-        <div className="flex gap-2">
-          <span className="font-mono text-green-400 self-center text-sm select-none">
-            {">"}
-          </span>
-          <textarea
-            ref={inputRef}
-            rows={1}
-            className="flex-1 max-w-[78%] bg-transparent border-none outline-none font-mono text-sm text-zinc-100 placeholder-zinc-500 resize-none overflow-y-auto leading-relaxed"
-            placeholder="질문 또는 종목/산업 분석 요청..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-            disabled={loading}
-            autoFocus
-          />
+        <div className="relative pr-20">
+          <div className="flex gap-2">
+            <span className="font-mono text-green-400 self-start mt-[3px] text-sm select-none">
+              {">"}
+            </span>
+            <textarea
+              ref={inputRef}
+              rows={1}
+              className="flex-1 bg-transparent border-none outline-none font-mono text-sm text-zinc-100 placeholder-zinc-500 resize-none overflow-y-auto leading-relaxed"
+              placeholder="질문 또는 종목/산업 분석 요청..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              disabled={loading}
+              autoFocus
+            />
+          </div>
           <button
             onClick={() => sendMessage()}
             disabled={loading || !input.trim()}
-            className="px-4 py-1.5 bg-green-900 hover:bg-green-800 disabled:bg-zinc-900 disabled:text-zinc-600 text-green-300 font-mono text-xs border border-green-800 disabled:border-zinc-800 transition-colors"
+            className="absolute top-0 right-0 px-4 py-1.5 bg-green-900 hover:bg-green-800 disabled:bg-zinc-900 disabled:text-zinc-600 text-green-300 font-mono text-xs border border-green-800 disabled:border-zinc-800 transition-colors"
           >
             SEND
           </button>
