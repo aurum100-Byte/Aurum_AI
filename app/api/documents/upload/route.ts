@@ -17,12 +17,22 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
   return result.text || "";
 }
 
-async function analyzeDocument(text: string, fileName: string, attempt = 1): Promise<Record<string, unknown>> {
-  // 토큰 절약: 최대 20,000자로 축소
-  const truncated =
-    text.length > 20000 ? text.substring(0, 20000) + "\n\n[이후 내용 생략]" : text;
+function sanitizeText(text: string): string {
+  return text
+    .replace(/\0/g, "")                              // null byte 제거
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // 제어문자 제거 (탭·개행 제외)
+    .replace(/�/g, "")                           // 유니코드 대체문자 제거
+    .replace(/\r\n/g, "\n")                           // CRLF 통일
+    .trim();
+}
 
-  const prompt = `아래 PDF 문서를 투자 관점에서 분석해서 정확히 이 JSON 형식으로만 응답해줘. 다른 말 붙이지 말고 JSON만:
+async function analyzeDocument(text: string, fileName: string, attempt = 1): Promise<Record<string, unknown>> {
+  // 제어문자 정제 후 최대 20,000자로 축소
+  const clean = sanitizeText(text);
+  const truncated =
+    clean.length > 20000 ? clean.substring(0, 20000) + "\n\n[이후 내용 생략]" : clean;
+
+  const prompt = `아래 PDF 문서를 투자 관점에서 분석해서 정확히 이 JSON 형식으로만 응답해줘. 다른 말 붙이지 말고 JSON만. 모든 값은 일반 한국어 문자열로만:
 
 {
   "objective_data": "문서에 나온 수치/실적/통계 등 확인 가능한 팩트만. 주관적 해석 없이.",
