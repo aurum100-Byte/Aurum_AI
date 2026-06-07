@@ -7,8 +7,10 @@ export const maxDuration = 60;
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  // pdf-parse v1 — 동적 import로 테스트 파일 로딩 문제 우회
-  const pdfParse = (await import("pdf-parse")).default as unknown as (
+  // pdf-parse v1 — lib/pdf-parse.js 직접 import로 테스트 파일 로딩 우회
+  // index.js가 초기화 시 ./test/data/05-versions-space.pdf를 읽으려다 실패하는 문제 해결
+  // @ts-expect-error — pdf-parse v1 내부 경로, 타입 선언 없음
+  const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default as (
     data: Buffer
   ) => Promise<{ text: string }>;
   const result = await pdfParse(buffer);
