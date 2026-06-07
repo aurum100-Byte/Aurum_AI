@@ -112,11 +112,14 @@ export default function Chat({
     for (const file of validFiles) {
       try {
         // 브라우저에서 텍스트 추출 → 텍스트만 서버로 전송 (크기 제한 우회)
-        const text = await extractTextFromPdf(file);
-        if (!text.trim()) {
+        const rawText = await extractTextFromPdf(file);
+        if (!rawText.trim()) {
           failed.push(`${file.name}(텍스트 추출 불가)`);
           continue;
         }
+
+        // 론 서로게이트 등 깨진 유니코드 제거 → JSON.stringify 안전하게
+        const text = rawText.replace(/[\uD800-\uDFFF]/g, "").replace(/\0/g, "");
 
         const res = await fetch("/api/documents/upload", {
           method: "POST",
