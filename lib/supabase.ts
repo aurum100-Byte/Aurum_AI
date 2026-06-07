@@ -34,6 +34,18 @@ export type MessageEntry = {
   content: string;
 };
 
+export type DocumentEntry = {
+  id: string;
+  created_at: string;
+  file_name: string;
+  content: string;
+  objective_data: string;
+  subjective_opinion: string;
+  ai_opinion: string;
+  summary: string;
+  tags: string[];
+};
+
 function createSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

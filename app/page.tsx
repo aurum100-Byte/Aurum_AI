@@ -5,14 +5,16 @@ import Chat from "@/components/Chat";
 import NewsSidebar from "@/components/NewsSidebar";
 import NewsPage from "@/components/NewsPage";
 import Journal from "@/components/Journal";
+import DocumentsPage from "@/components/DocumentsPage";
 import ConversationSidebar from "@/components/ConversationSidebar";
 
-type Tab = "chat" | "news" | "journal";
+type Tab = "chat" | "news" | "journal" | "docs";
 
 const TAB_LABELS: Record<Tab, string> = {
   chat: "채팅",
   news: "뉴스",
   journal: "투자 일지",
+  docs: "리서치 문서",
 };
 
 export default function Home() {
@@ -82,7 +84,7 @@ export default function Home() {
 
         <div className="flex items-center gap-1">
           <nav className="flex gap-1 mr-2">
-            {(["chat", "news", "journal"] as Tab[]).map((tab) => (
+            {(["chat", "news", "journal", "docs"] as Tab[]).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -155,6 +157,13 @@ export default function Home() {
         {activeTab === "journal" && (
           <div className="flex-1 overflow-hidden">
             <Journal onAIAnalysis={handleAIAnalysis} />
+          </div>
+        )}
+
+        {/* 리서치 문서 탭 */}
+        {activeTab === "docs" && (
+          <div className="flex-1 overflow-hidden">
+            <DocumentsPage />
           </div>
         )}
       </main>

@@ -30,8 +30,10 @@ export default function Chat({
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [includeJournal, setIncludeJournal] = useState(false);
   const [activeConvId, setActiveConvId] = useState<string | null>(conversationId);
+  const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // prop → 로컬 state 동기화
   useEffect(() => {
@@ -81,6 +83,45 @@ export default function Chat({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingMessage]);
+
+  async function handlePdfUpload(files: FileList) {
+    const validFiles = Array.from(files).filter((f) =>
+      f.name.toLowerCase().endsWith(".pdf")
+    );
+    if (validFiles.length === 0) return;
+
+    for (const file of validFiles) {
+      setUploadingFiles((prev) => [...prev, file.name]);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/documents/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `📎 ${file.name} 저장 완료` },
+          ]);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `❌ ${file.name} 저장 실패: ${data.error}` },
+          ]);
+        }
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `❌ ${file.name} 업로드 중 오류 발생` },
+        ]);
+      } finally {
+        setUploadingFiles((prev) => prev.filter((n) => n !== file.name));
+      }
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   async function sendMessage(
     text: string = input,
@@ -265,20 +306,47 @@ export default function Chat({
             SEND
           </button>
         </div>
-        <div className="flex items-center gap-2 pl-4">
-          <input
-            type="checkbox"
-            id="include-journal"
-            checked={includeJournal}
-            onChange={(e) => setIncludeJournal(e.target.checked)}
-            className="accent-green-500"
-          />
-          <label
-            htmlFor="include-journal"
-            className="text-xs font-mono text-zinc-400 cursor-pointer hover:text-zinc-200"
-          >
-            투자 일지 컨텍스트 포함
-          </label>
+        <div className="flex items-center justify-between pl-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="include-journal"
+              checked={includeJournal}
+              onChange={(e) => setIncludeJournal(e.target.checked)}
+              className="accent-green-500"
+            />
+            <label
+              htmlFor="include-journal"
+              className="text-xs font-mono text-zinc-400 cursor-pointer hover:text-zinc-200"
+            >
+              투자 일지 컨텍스트 포함
+            </label>
+          </div>
+
+          {/* PDF 업로드 */}
+          <div className="flex items-center gap-2">
+            {uploadingFiles.length > 0 && (
+              <span className="font-mono text-xs text-zinc-500 animate-pulse">
+                {uploadingFiles[0]} 분석 중...
+              </span>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              multiple
+              className="hidden"
+              onChange={(e) => e.target.files && handlePdfUpload(e.target.files)}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingFiles.length > 0}
+              className="font-mono text-xs px-3 py-1 border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 disabled:text-zinc-700 disabled:border-zinc-800 transition-colors"
+              title="PDF 업로드 (최대 10개)"
+            >
+              📎 PDF
+            </button>
+          </div>
         </div>
       </div>
     </div>
