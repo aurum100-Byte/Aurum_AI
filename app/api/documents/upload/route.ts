@@ -51,7 +51,12 @@ ${truncated}`;
     });
 
     const raw = response.choices[0].message.content || "{}";
-    return JSON.parse(raw);
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // JSON 파싱 실패 시 빈 분석 결과로 저장 (데이터 유실 방지)
+      return { objective_data: raw, subjective_opinion: "", ai_opinion: "", summary: "JSON 파싱 실패 — 원문 저장됨", tags: [] };
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // 429 Rate Limit → 최대 3회 재시도 (점진적 대기)

@@ -104,7 +104,8 @@ export default function Chat({
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          failed.push(`${file.name}(${data.error || "오류"})`);
+          const reason = data.error || `HTTP ${res.status}`;
+          failed.push(`${file.name}(${reason})`);
         }
       } catch {
         failed.push(`${file.name}(네트워크 오류)`);
