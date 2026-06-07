@@ -17,9 +17,10 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
   return result.text || "";
 }
 
-async function analyzeDocument(text: string, fileName: string) {
+async function analyzeDocument(text: string, fileName: string, attempt = 1): Promise<Record<string, unknown>> {
+  // 토큰 절약: 최대 20,000자로 축소
   const truncated =
-    text.length > 60000 ? text.substring(0, 60000) + "\n\n[이후 내용 생략]" : text;
+    text.length > 20000 ? text.substring(0, 20000) + "\n\n[이후 내용 생략]" : text;
 
   const prompt = `아래 PDF 문서를 투자 관점에서 분석해서 정확히 이 JSON 형식으로만 응답해줘. 다른 말 붙이지 말고 JSON만:
 
@@ -36,23 +37,30 @@ async function analyzeDocument(text: string, fileName: string) {
 문서 내용:
 ${truncated}`;
 
-  const response = await client.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: "투자 리서치 문서를 분석하는 전문 애널리스트. 반드시 유효한 JSON으로만 응답.",
-      },
-      { role: "user", content: prompt },
-    ],
-    response_format: { type: "json_object" },
-  });
-
-  const raw = response.choices[0].message.content || "{}";
   try {
+    const response = await client.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "투자 리서치 문서를 분석하는 전문 애널리스트. 반드시 유효한 JSON으로만 응답.",
+        },
+        { role: "user", content: prompt },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const raw = response.choices[0].message.content || "{}";
     return JSON.parse(raw);
-  } catch {
-    return { objective_data: "", subjective_opinion: "", ai_opinion: "", summary: "", tags: [] };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // 429 Rate Limit → 최대 3회 재시도 (점진적 대기)
+    if (msg.includes("429") && attempt <= 3) {
+      const waitMs = attempt * 3000; // 3s → 6s → 9s
+      await new Promise((r) => setTimeout(r, waitMs));
+      return analyzeDocument(text, fileName, attempt + 1);
+    }
+    throw err;
   }
 }
 
