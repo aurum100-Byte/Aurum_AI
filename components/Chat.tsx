@@ -113,7 +113,7 @@ export default function Chat({
     if (failed.length === 0) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "올려준 파일 모두 분석 완료했습니다." },
+        { role: "assistant", content: "📎 분석 완료" },
       ]);
     } else {
       const ok = validFiles.length - failed.length;
@@ -123,8 +123,8 @@ export default function Chat({
           role: "assistant",
           content:
             ok > 0
-              ? `${ok}개 분석 완료. 실패: ${failed.join(", ")}`
-              : `파일 분석 실패: ${failed.join(", ")}`,
+              ? `📎 ${ok}개 분석 완료 / 실패: ${failed.join(", ")}`
+              : `📎 분석 실패: ${failed.join(", ")}`,
         },
       ]);
     }
