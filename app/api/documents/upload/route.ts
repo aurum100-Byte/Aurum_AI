@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { PDFParse } from "pdf-parse";
 import { supabase } from "@/lib/supabase";
 
 export const maxDuration = 60;
@@ -8,8 +7,11 @@ export const maxDuration = 60;
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const parser = new PDFParse({ data: buffer });
-  const result = await parser.getText();
+  // pdf-parse v1 — 동적 import로 테스트 파일 로딩 문제 우회
+  const pdfParse = (await import("pdf-parse")).default as unknown as (
+    data: Buffer
+  ) => Promise<{ text: string }>;
+  const result = await pdfParse(buffer);
   return result.text || "";
 }
 
@@ -84,7 +86,7 @@ export async function POST(req: NextRequest) {
         {
           error: pdfError
             ? `텍스트 추출 실패: ${pdfError}`
-            : "PDF에서 텍스트를 추출할 수 없습니다. (스캔 이미지 PDF 불가)",
+            : "PDF 텍스트 추출 불가 (이미지 PDF는 지원하지 않음)",
         },
         { status: 400 }
       );
