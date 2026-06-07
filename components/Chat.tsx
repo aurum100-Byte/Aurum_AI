@@ -102,9 +102,12 @@ export default function Chat({
           method: "POST",
           body: formData,
         });
-        if (!res.ok) failed.push(file.name);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          failed.push(`${file.name}(${data.error || "오류"})`);
+        }
       } catch {
-        failed.push(file.name);
+        failed.push(`${file.name}(네트워크 오류)`);
       }
     }
 

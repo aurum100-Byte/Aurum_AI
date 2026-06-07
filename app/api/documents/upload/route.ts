@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import { PDFParse } from "pdf-parse";
 import { supabase } from "@/lib/supabase";
-
-// pdf-parse는 CJS 전용이므로 require 사용
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse") as (
-  data: Buffer
-) => Promise<{ text: string; numpages: number }>;
 
 export const maxDuration = 60;
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const parser = new PDFParse({ data: buffer });
+  const result = await parser.getText();
+  return result.text || "";
+}
+
 async function analyzeDocument(text: string, fileName: string) {
-  // 토큰 제한 대비 최대 60,000자로 자름
-  const truncated = text.length > 60000 ? text.substring(0, 60000) + "\n\n[이후 내용 생략]" : text;
+  const truncated =
+    text.length > 60000 ? text.substring(0, 60000) + "\n\n[이후 내용 생략]" : text;
 
   const prompt = `아래 PDF 문서를 투자 관점에서 분석해서 정확히 이 JSON 형식으로만 응답해줘. 다른 말 붙이지 말고 JSON만:
 
@@ -47,13 +48,7 @@ ${truncated}`;
   try {
     return JSON.parse(raw);
   } catch {
-    return {
-      objective_data: "",
-      subjective_opinion: "",
-      ai_opinion: "",
-      summary: "",
-      tags: [],
-    };
+    return { objective_data: "", subjective_opinion: "", ai_opinion: "", summary: "", tags: [] };
   }
 }
 
@@ -76,16 +71,21 @@ export async function POST(req: NextRequest) {
     // PDF 텍스트 추출
     const buffer = Buffer.from(await file.arrayBuffer());
     let extractedText = "";
+    let pdfError = "";
     try {
-      const parsed = await pdfParse(buffer);
-      extractedText = parsed.text || "";
-    } catch {
-      extractedText = "";
+      extractedText = await extractPdfText(buffer);
+    } catch (err) {
+      pdfError = err instanceof Error ? err.message : String(err);
+      console.error("pdf-parse 오류:", pdfError);
     }
 
     if (!extractedText.trim()) {
       return NextResponse.json(
-        { error: "PDF에서 텍스트를 추출할 수 없습니다. (스캔 이미지 PDF는 지원하지 않음)" },
+        {
+          error: pdfError
+            ? `텍스트 추출 실패: ${pdfError}`
+            : "PDF에서 텍스트를 추출할 수 없습니다. (스캔 이미지 PDF 불가)",
+        },
         { status: 400 }
       );
     }
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
     // Supabase 저장
     const { error } = await supabase.from("documents").insert({
       file_name: file.name,
-      content: extractedText.substring(0, 100000), // 최대 100k자
+      content: extractedText.substring(0, 100000),
       objective_data: analysis.objective_data || "",
       subjective_opinion: analysis.subjective_opinion || "",
       ai_opinion: analysis.ai_opinion || "",
