@@ -90,8 +90,11 @@ export default function Chat({
     );
     if (validFiles.length === 0) return;
 
+    setUploadingFiles(validFiles.map((f) => f.name));
+
+    const failed: string[] = [];
+
     for (const file of validFiles) {
-      setUploadingFiles((prev) => [...prev, file.name]);
       try {
         const formData = new FormData();
         formData.append("file", file);
@@ -99,27 +102,33 @@ export default function Chat({
           method: "POST",
           body: formData,
         });
-        const data = await res.json();
-        if (res.ok) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: `📎 ${file.name} 저장 완료` },
-          ]);
-        } else {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: `❌ ${file.name} 저장 실패: ${data.error}` },
-          ]);
-        }
+        if (!res.ok) failed.push(file.name);
       } catch {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `❌ ${file.name} 업로드 중 오류 발생` },
-        ]);
-      } finally {
-        setUploadingFiles((prev) => prev.filter((n) => n !== file.name));
+        failed.push(file.name);
       }
     }
+
+    setUploadingFiles([]);
+
+    if (failed.length === 0) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "올려준 파일 모두 분석 완료했습니다." },
+      ]);
+    } else {
+      const ok = validFiles.length - failed.length;
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            ok > 0
+              ? `${ok}개 분석 완료. 실패: ${failed.join(", ")}`
+              : `파일 분석 실패: ${failed.join(", ")}`,
+        },
+      ]);
+    }
+
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
