@@ -69,13 +69,15 @@ ${truncated}`;
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // 429 Rate Limit → 최대 3회 재시도 (점진적 대기)
+    // 429 Rate Limit → 최대 3회 재시도
     if (msg.includes("429") && attempt <= 3) {
-      const waitMs = attempt * 3000; // 3s → 6s → 9s
+      const waitMs = attempt * 3000;
       await new Promise((r) => setTimeout(r, waitMs));
       return analyzeDocument(text, fileName, attempt + 1);
     }
-    throw err;
+    // 그 외 에러는 빈 분석 결과로 저장 (실패 처리 안 함)
+    console.error("analyzeDocument 오류:", msg);
+    return { objective_data: "", subjective_opinion: "", ai_opinion: "", summary: `분석 오류: ${msg}`, tags: [] };
   }
 }
 

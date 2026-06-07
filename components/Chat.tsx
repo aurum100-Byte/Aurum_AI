@@ -85,9 +85,22 @@ export default function Chat({
   }, [pendingMessage]);
 
   async function handlePdfUpload(files: FileList) {
-    const validFiles = Array.from(files).filter((f) =>
-      f.name.toLowerCase().endsWith(".pdf")
-    );
+    const MAX_SIZE = 4 * 1024 * 1024; // 4MB (Vercel Hobby 한도)
+    const allFiles = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+    if (allFiles.length === 0) return;
+
+    const tooLarge = allFiles.filter((f) => f.size > MAX_SIZE);
+    const validFiles = allFiles.filter((f) => f.size <= MAX_SIZE);
+
+    if (tooLarge.length > 0) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `📎 파일 크기 초과 (최대 4MB): ${tooLarge.map((f) => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`).join(", ")}`,
+        },
+      ]);
+    }
     if (validFiles.length === 0) return;
 
     setUploadingFiles(validFiles.map((f) => f.name));
