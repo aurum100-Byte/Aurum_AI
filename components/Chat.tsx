@@ -84,23 +84,25 @@ export default function Chat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingMessage]);
 
-  async function handlePdfUpload(files: FileList) {
-    const MAX_SIZE = 4 * 1024 * 1024; // 4MB (Vercel Hobby 한도)
-    const allFiles = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
-    if (allFiles.length === 0) return;
+  async function extractTextFromPdf(file: File): Promise<string> {
+    const pdfjsLib = await import("pdfjs-dist");
+    // CDN worker — 버전 자동 매칭
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-    const tooLarge = allFiles.filter((f) => f.size > MAX_SIZE);
-    const validFiles = allFiles.filter((f) => f.size <= MAX_SIZE);
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-    if (tooLarge.length > 0) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `📎 파일 크기 초과 (최대 4MB): ${tooLarge.map((f) => `${f.name} (${(f.size / 1024 / 1024).toFixed(1)}MB)`).join(", ")}`,
-        },
-      ]);
+    let text = "";
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map((item) => ("str" in item ? item.str : "")).join(" ") + "\n";
     }
+    return text;
+  }
+
+  async function handlePdfUpload(files: FileList) {
+    const validFiles = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
     if (validFiles.length === 0) return;
 
     setUploadingFiles(validFiles.map((f) => f.name));
@@ -109,19 +111,24 @@ export default function Chat({
 
     for (const file of validFiles) {
       try {
-        const formData = new FormData();
-        formData.append("file", file);
+        // 브라우저에서 텍스트 추출 → 텍스트만 서버로 전송 (크기 제한 우회)
+        const text = await extractTextFromPdf(file);
+        if (!text.trim()) {
+          failed.push(`${file.name}(텍스트 추출 불가)`);
+          continue;
+        }
+
         const res = await fetch("/api/documents/upload", {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: file.name, text }),
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          const reason = data.error || `HTTP ${res.status}`;
-          failed.push(`${file.name}(${reason})`);
+          failed.push(`${file.name}(${data.error || `HTTP ${res.status}`})`);
         }
-      } catch {
-        failed.push(`${file.name}(네트워크 오류)`);
+      } catch (err) {
+        failed.push(`${file.name}(${err instanceof Error ? err.message : "오류"})`);
       }
     }
 

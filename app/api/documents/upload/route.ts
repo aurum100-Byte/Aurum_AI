@@ -6,28 +6,20 @@ export const maxDuration = 60;
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-async function extractPdfText(buffer: Buffer): Promise<string> {
-  // pdf-parse v1 — lib/pdf-parse.js 직접 import로 테스트 파일 로딩 우회
-  // index.js가 초기화 시 ./test/data/05-versions-space.pdf를 읽으려다 실패하는 문제 해결
-  // @ts-expect-error — pdf-parse v1 내부 경로, 타입 선언 없음
-  const pdfParse = (await import("pdf-parse/lib/pdf-parse.js")).default as (
-    data: Buffer
-  ) => Promise<{ text: string }>;
-  const result = await pdfParse(buffer);
-  return result.text || "";
-}
-
 function sanitizeText(text: string): string {
   return text
-    .replace(/\0/g, "")                              // null byte 제거
-    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // 제어문자 제거 (탭·개행 제외)
-    .replace(/�/g, "")                           // 유니코드 대체문자 제거
-    .replace(/\r\n/g, "\n")                           // CRLF 통일
+    .replace(/\0/g, "")
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .replace(/�/g, "")
+    .replace(/\r\n/g, "\n")
     .trim();
 }
 
-async function analyzeDocument(text: string, fileName: string, attempt = 1): Promise<Record<string, unknown>> {
-  // 제어문자 정제 후 최대 20,000자로 축소
+async function analyzeDocument(
+  text: string,
+  fileName: string,
+  attempt = 1
+): Promise<Record<string, unknown>> {
   const clean = sanitizeText(text);
   const truncated =
     clean.length > 20000 ? clean.substring(0, 20000) + "\n\n[이후 내용 생략]" : clean;
@@ -64,18 +56,15 @@ ${truncated}`;
     try {
       return JSON.parse(raw);
     } catch {
-      // JSON 파싱 실패 시 빈 분석 결과로 저장 (데이터 유실 방지)
-      return { objective_data: raw, subjective_opinion: "", ai_opinion: "", summary: "JSON 파싱 실패 — 원문 저장됨", tags: [] };
+      return { objective_data: raw, subjective_opinion: "", ai_opinion: "", summary: "JSON 파싱 실패", tags: [] };
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // 429 Rate Limit → 최대 3회 재시도
     if (msg.includes("429") && attempt <= 3) {
       const waitMs = attempt * 3000;
       await new Promise((r) => setTimeout(r, waitMs));
       return analyzeDocument(text, fileName, attempt + 1);
     }
-    // 그 외 에러는 빈 분석 결과로 저장 (실패 처리 안 함)
     console.error("analyzeDocument 오류:", msg);
     return { objective_data: "", subjective_opinion: "", ai_opinion: "", summary: `분석 오류: ${msg}`, tags: [] };
   }
@@ -87,45 +76,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    // 클라이언트에서 텍스트 추출 후 JSON으로 전송
+    const { fileName, text } = await req.json();
 
-    if (!file) {
-      return NextResponse.json({ error: "파일이 없습니다." }, { status: 400 });
-    }
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      return NextResponse.json({ error: "PDF 파일만 업로드 가능합니다." }, { status: 400 });
+    if (!fileName || !text?.trim()) {
+      return NextResponse.json({ error: "파일명 또는 텍스트가 없습니다." }, { status: 400 });
     }
 
-    // PDF 텍스트 추출
-    const buffer = Buffer.from(await file.arrayBuffer());
-    let extractedText = "";
-    let pdfError = "";
-    try {
-      extractedText = await extractPdfText(buffer);
-    } catch (err) {
-      pdfError = err instanceof Error ? err.message : String(err);
-      console.error("pdf-parse 오류:", pdfError);
-    }
+    const analysis = await analyzeDocument(text, fileName);
 
-    if (!extractedText.trim()) {
-      return NextResponse.json(
-        {
-          error: pdfError
-            ? `텍스트 추출 실패: ${pdfError}`
-            : "PDF 텍스트 추출 불가 (이미지 PDF는 지원하지 않음)",
-        },
-        { status: 400 }
-      );
-    }
-
-    // AI 분석
-    const analysis = await analyzeDocument(extractedText, file.name);
-
-    // Supabase 저장
     const { error } = await supabase.from("documents").insert({
-      file_name: file.name,
-      content: extractedText.substring(0, 100000),
+      file_name: fileName,
+      content: text.substring(0, 100000),
       objective_data: analysis.objective_data || "",
       subjective_opinion: analysis.subjective_opinion || "",
       ai_opinion: analysis.ai_opinion || "",
@@ -137,7 +99,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, file_name: file.name });
+    return NextResponse.json({ success: true, file_name: fileName });
   } catch (err) {
     console.error("PDF 업로드 오류:", err);
     return NextResponse.json(
