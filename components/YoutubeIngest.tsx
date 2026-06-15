@@ -51,65 +51,89 @@ export default function YoutubeIngest() {
     setLogs([]);
     setProgress(null);
 
-    const runBatch = async (startIndex: number): Promise<void> => {
-      const res = await fetch("/api/youtube/ingest", {
+    try {
+      // 1단계: 채널 스캔 (영상 목록만 가져오기)
+      setLogs([{ text: "채널 스캔 중...", type: "status" }]);
+      const scanRes = await fetch("/api/youtube/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channelUrl: channelUrl.trim(), startIndex, batchSize: 10 }),
+        body: JSON.stringify({ mode: "scan", channelUrl: channelUrl.trim() }),
       });
 
-      if (!res.body) throw new Error("스트림 없음");
+      if (!scanRes.ok) {
+        const err = await scanRes.json().catch(() => ({}));
+        throw new Error(err.error || `스캔 실패 (${scanRes.status})`);
+      }
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let nextIndex: number | null = null;
+      const { channelId, channelName, videos } = await scanRes.json();
+      const totalCount = videos.length;
+      setLogs((prev) => [...prev, { text: `총 ${totalCount}개 영상 발견. 처리 시작...`, type: "status" }]);
+      setProgress({ current: 0, total: totalCount });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // 2단계: 10개씩 배치 처리
+      const BATCH = 10;
+      let processedSoFar = 0;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
+      for (let i = 0; i < totalCount; i += BATCH) {
+        const batch = videos.slice(i, i + BATCH);
+        const isLast = i + BATCH >= totalCount;
 
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event: SSEEvent = JSON.parse(line.slice(6));
+        const res = await fetch("/api/youtube/ingest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            channelId,
+            channelName,
+            channelUrl: channelUrl.trim(),
+            videos: batch,
+            isLast,
+            totalCount,
+            processedSoFar,
+          }),
+        });
 
-            if (event.type !== "batch-done") {
-              setLogs((prev) => [...prev, { text: event.message, type: event.type }]);
+        if (!res.body) throw new Error("스트림 없음");
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const event: SSEEvent = JSON.parse(line.slice(6));
+
+              if (event.type === "progress") {
+                setLogs((prev) => [...prev, { text: event.message, type: event.type }]);
+                if (event.current !== undefined && event.total !== undefined) {
+                  setProgress({ current: event.current, total: event.total });
+                }
+              } else if (event.type === "done") {
+                setLogs((prev) => [...prev, { text: event.message, type: "done" }]);
+                setProgress(null);
+                await loadChannels();
+                setChannelUrl("");
+              } else if (event.type === "error") {
+                throw new Error(event.message);
+              }
+            } catch (parseErr) {
+              if (parseErr instanceof Error && parseErr.message !== "Unexpected end of JSON input") {
+                throw parseErr;
+              }
             }
-
-            if ((event.type === "progress" || event.type === "batch-done") &&
-                event.current !== undefined && event.total !== undefined) {
-              setProgress({ current: event.current ?? (event.nextIndex ?? 0), total: event.total });
-            }
-
-            if (event.type === "batch-done" && event.nextIndex !== undefined) {
-              nextIndex = event.nextIndex;
-            }
-
-            if (event.type === "done") {
-              setProgress(null);
-              await loadChannels();
-              setChannelUrl("");
-            }
-          } catch {
-            // parse error skip
           }
         }
-      }
 
-      // 다음 배치 자동 실행
-      if (nextIndex !== null) {
-        await runBatch(nextIndex);
+        processedSoFar += batch.length;
       }
-    };
-
-    try {
-      await runBatch(0);
     } catch (err) {
       setLogs((prev) => [
         ...prev,
