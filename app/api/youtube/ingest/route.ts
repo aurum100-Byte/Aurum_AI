@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { google } from "googleapis";
 import { YoutubeTranscript } from "youtube-transcript";
 import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
@@ -15,7 +14,7 @@ function parseChannelUrl(url: string): { channelId?: string; handle?: string } {
   if (handleMatch) return { handle: handleMatch[1] };
   const channelIdMatch = trimmed.match(/channel\/([^/?&\s]+)/);
   if (channelIdMatch) return { channelId: channelIdMatch[1] };
-  throw new Error("지원하지 않는 URL 형식이야. @handle 또는 /channel/ID 형태로 입력해줘.");
+  throw new Error("지원하지 않는 URL 형식. @handle 또는 /channel/ID 형태로 입력해줘.");
 }
 
 function chunkText(text: string, size = 500, overlap = 50): string[] {
@@ -43,62 +42,88 @@ async function embedChunks(chunks: string[]): Promise<number[][]> {
 
 type VideoItem = { videoId: string; title: string; publishedAt: string };
 
-// ── 1단계: 채널 스캔 (영상 목록만 가져오기) ──────────────────────────
-async function handleScan(channelUrl: string): Promise<Response> {
-  if (!process.env.YOUTUBE_API_KEY) {
-    return NextResponse.json({ error: "YOUTUBE_API_KEY가 설정되지 않았어." }, { status: 500 });
+async function ytFetch(path: string): Promise<Record<string, unknown>> {
+  const apiKey = process.env.YOUTUBE_API_KEY;
+  const res = await fetch(`https://www.googleapis.com/youtube/v3${path}&key=${apiKey}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: { message?: string } }).error?.message || `YouTube API 오류 ${res.status}`);
   }
-  if (!supabase) {
-    return NextResponse.json({ error: "Supabase가 설정되지 않았어." }, { status: 500 });
-  }
-
-  const youtube = google.youtube({ version: "v3", auth: process.env.YOUTUBE_API_KEY });
-  const parsed = parseChannelUrl(channelUrl);
-
-  const channelRes = await youtube.channels.list({
-    part: ["contentDetails", "snippet"],
-    ...(parsed.handle ? { forHandle: parsed.handle } : { id: [parsed.channelId!] }),
-  });
-
-  const channel = channelRes.data.items?.[0];
-  if (!channel) return NextResponse.json({ error: "채널을 찾을 수 없어." }, { status: 404 });
-
-  const channelId = channel.id!;
-  const channelName = channel.snippet?.title || "알 수 없음";
-  const uploadsPlaylistId = channel.contentDetails?.relatedPlaylists?.uploads;
-  if (!uploadsPlaylistId) {
-    return NextResponse.json({ error: "업로드 플레이리스트를 찾을 수 없어." }, { status: 500 });
-  }
-
-  await supabase.from("youtube_channels").upsert(
-    { channel_id: channelId, channel_name: channelName, channel_url: channelUrl },
-    { onConflict: "channel_id" }
-  );
-
-  const videos: VideoItem[] = [];
-  let pageToken: string | undefined;
-
-  do {
-    const playlistRes = await youtube.playlistItems.list({
-      part: ["contentDetails", "snippet"],
-      playlistId: uploadsPlaylistId,
-      maxResults: 50,
-      pageToken,
-    });
-    for (const item of playlistRes.data.items || []) {
-      const videoId = item.contentDetails?.videoId;
-      const title = item.snippet?.title;
-      if (videoId && title) {
-        videos.push({ videoId, title, publishedAt: item.snippet?.publishedAt || "" });
-      }
-    }
-    pageToken = playlistRes.data.nextPageToken || undefined;
-  } while (pageToken);
-
-  return NextResponse.json({ channelId, channelName, videos });
+  return res.json();
 }
 
-// ── 2단계: 배치 처리 (클라이언트에서 보낸 영상만 처리) ─────────────────
+// ── 1단계: 채널 스캔 ─────────────────────────────────────────────────
+async function handleScan(channelUrl: string): Promise<Response> {
+  try {
+    if (!process.env.YOUTUBE_API_KEY)
+      return NextResponse.json({ error: "YOUTUBE_API_KEY가 설정되지 않았어." }, { status: 500 });
+    if (!supabase)
+      return NextResponse.json({ error: "Supabase가 설정되지 않았어." }, { status: 500 });
+
+    const parsed = parseChannelUrl(channelUrl);
+
+    // 채널 정보 조회
+    const channelQuery = parsed.handle
+      ? `/channels?part=contentDetails,snippet&forHandle=${encodeURIComponent(parsed.handle)}`
+      : `/channels?part=contentDetails,snippet&id=${encodeURIComponent(parsed.channelId!)}`;
+
+    const channelData = await ytFetch(channelQuery) as {
+      items?: Array<{
+        id: string;
+        snippet: { title: string };
+        contentDetails: { relatedPlaylists: { uploads: string } };
+      }>;
+    };
+
+    const channel = channelData.items?.[0];
+    if (!channel) return NextResponse.json({ error: "채널을 찾을 수 없어." }, { status: 404 });
+
+    const channelId = channel.id;
+    const channelName = channel.snippet.title;
+    const uploadsPlaylistId = channel.contentDetails.relatedPlaylists.uploads;
+
+    // 채널 저장
+    await supabase.from("youtube_channels").upsert(
+      { channel_id: channelId, channel_name: channelName, channel_url: channelUrl },
+      { onConflict: "channel_id" }
+    );
+
+    // 전체 영상 목록 수집
+    const videos: VideoItem[] = [];
+    let pageToken: string | undefined;
+
+    do {
+      const pageParam = pageToken ? `&pageToken=${pageToken}` : "";
+      const listData = await ytFetch(
+        `/playlistItems?part=contentDetails,snippet&playlistId=${uploadsPlaylistId}&maxResults=50${pageParam}`
+      ) as {
+        items?: Array<{
+          contentDetails: { videoId: string };
+          snippet: { title: string; publishedAt: string };
+        }>;
+        nextPageToken?: string;
+      };
+
+      for (const item of listData.items || []) {
+        const videoId = item.contentDetails?.videoId;
+        const title = item.snippet?.title;
+        if (videoId && title) {
+          videos.push({ videoId, title, publishedAt: item.snippet?.publishedAt || "" });
+        }
+      }
+      pageToken = listData.nextPageToken;
+    } while (pageToken);
+
+    return NextResponse.json({ channelId, channelName, videos });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "스캔 중 오류 발생" },
+      { status: 500 }
+    );
+  }
+}
+
+// ── 2단계: 배치 처리 ─────────────────────────────────────────────────
 async function handleProcess(body: {
   channelId: string;
   channelName: string;
@@ -108,7 +133,7 @@ async function handleProcess(body: {
   totalCount: number;
   processedSoFar: number;
 }): Promise<Response> {
-  const { channelId, channelName, channelUrl, videos, isLast, totalCount, processedSoFar } = body;
+  const { channelId, channelName, videos, isLast, totalCount, processedSoFar } = body;
 
   if (!supabase) {
     return NextResponse.json({ error: "Supabase가 설정되지 않았어." }, { status: 500 });
@@ -121,87 +146,85 @@ async function handleProcess(body: {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
-      let processed = 0, skipped = 0, failed = 0;
+      try {
+        let processed = 0, skipped = 0, failed = 0;
 
-      for (const { videoId, title, publishedAt } of videos) {
-        const { data: existing } = await supabase!
-          .from("youtube_videos")
-          .select("video_id")
-          .eq("video_id", videoId)
-          .maybeSingle();
+        for (const { videoId, title, publishedAt } of videos) {
+          const { data: existing } = await supabase!
+            .from("youtube_videos")
+            .select("video_id")
+            .eq("video_id", videoId)
+            .maybeSingle();
 
-        if (existing) {
-          skipped++;
-          send({
-            type: "progress",
-            current: processedSoFar + processed + skipped + failed,
-            total: totalCount,
-            message: `[스킵] ${title}`,
-          });
-          continue;
+          if (existing) {
+            skipped++;
+            send({
+              type: "progress",
+              current: processedSoFar + processed + skipped + failed,
+              total: totalCount,
+              message: `[스킵] ${title}`,
+            });
+            continue;
+          }
+
+          try {
+            const transcriptArr = await YoutubeTranscript.fetchTranscript(videoId);
+            const fullText = transcriptArr.map((t) => t.text).join(" ").replace(/\s+/g, " ").trim();
+            if (!fullText) throw new Error("자막 없음");
+
+            const chunks = chunkText(fullText);
+            const embeddings = await embedChunks(chunks);
+
+            await supabase!.from("youtube_transcripts").insert(
+              chunks.map((chunk, idx) => ({
+                video_id: videoId,
+                video_title: title,
+                chunk_text: chunk,
+                embedding: embeddings[idx],
+                chunk_index: idx,
+              }))
+            );
+
+            await supabase!.from("youtube_videos").upsert(
+              { channel_id: channelId, video_id: videoId, title, published_at: publishedAt || null },
+              { onConflict: "video_id" }
+            );
+
+            processed++;
+            send({
+              type: "progress",
+              current: processedSoFar + processed + skipped + failed,
+              total: totalCount,
+              message: `[완료] ${title}`,
+            });
+          } catch {
+            failed++;
+            send({
+              type: "progress",
+              current: processedSoFar + processed + skipped + failed,
+              total: totalCount,
+              message: `[자막없음] ${title}`,
+            });
+          }
+
+          await new Promise((r) => setTimeout(r, 100));
         }
 
-        try {
-          const transcriptArr = await YoutubeTranscript.fetchTranscript(videoId);
-          const fullText = transcriptArr.map((t) => t.text).join(" ").replace(/\s+/g, " ").trim();
-          if (!fullText) throw new Error("자막 없음");
+        if (isLast) {
+          await supabase!
+            .from("youtube_channels")
+            .update({ video_count: processed })
+            .eq("channel_id", channelId);
 
-          const chunks = chunkText(fullText);
-          const embeddings = await embedChunks(chunks);
-
-          await supabase!.from("youtube_transcripts").insert(
-            chunks.map((chunk, idx) => ({
-              video_id: videoId,
-              video_title: title,
-              chunk_text: chunk,
-              embedding: embeddings[idx],
-              chunk_index: idx,
-            }))
-          );
-
-          await supabase!.from("youtube_videos").upsert(
-            { channel_id: channelId, video_id: videoId, title, published_at: publishedAt || null },
-            { onConflict: "video_id" }
-          );
-
-          processed++;
-          send({
-            type: "progress",
-            current: processedSoFar + processed + skipped + failed,
-            total: totalCount,
-            message: `[완료] ${title}`,
-          });
-        } catch {
-          failed++;
-          send({
-            type: "progress",
-            current: processedSoFar + processed + skipped + failed,
-            total: totalCount,
-            message: `[자막없음] ${title}`,
-          });
+          send({ type: "done", message: `${channelName} 학습 완료!`, processed, skipped, failed });
+        } else {
+          send({ type: "batch-done", processed, skipped, failed });
         }
-
-        await new Promise((r) => setTimeout(r, 100));
+      } catch (err) {
+        send({ type: "error", message: err instanceof Error ? err.message : "처리 중 오류" });
+      } finally {
+        controller.close();
       }
-
-      if (isLast) {
-        await supabase!
-          .from("youtube_channels")
-          .update({ video_count: processed })
-          .eq("channel_id", channelId);
-
-        send({
-          type: "done",
-          message: `${channelName} 학습 완료!`,
-          processed,
-          skipped,
-          failed,
-        });
-      } else {
-        send({ type: "batch-done", processed, skipped, failed });
-      }
-
-      controller.close();
     },
   });
 
