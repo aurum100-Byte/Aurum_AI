@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { INVESTMENT_SYSTEM_PROMPT } from "@/lib/systemPrompt";
 import { supabase, type JournalEntry } from "@/lib/supabase";
+import { searchYoutubeContext } from "@/lib/youtube-rag";
+
+export const maxDuration = 60;
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -108,14 +111,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "메시지가 없습니다." }, { status: 400 });
     }
 
-    const [digest, journalContext, prevSummaries, docContext] = await Promise.all([
+    const lastUserMessage = messages[messages.length - 1]?.content || "";
+    const [digest, journalContext, prevSummaries, docContext, youtubeContext] = await Promise.all([
       getLatestDigest(),
       includeJournal ? getJournalContext() : Promise.resolve(""),
       getPreviousSummaries(conversationId),
       getDocumentContext(),
+      searchYoutubeContext(lastUserMessage),
     ]);
 
-    let systemPrompt = INVESTMENT_SYSTEM_PROMPT;
+    const today = new Date().toLocaleDateString("ko-KR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      weekday: "long",
+    });
+    let systemPrompt = `오늘 날짜: ${today}\n이 날짜를 기준으로 '최근', '현재', '올해' 같은 시간 표현을 판단해줘. 훈련 데이터 이후의 정보는 모를 수 있지만, 오늘이 언제인지는 항상 알고 있어야 해.\n\n` + INVESTMENT_SYSTEM_PROMPT;
 
     if (digest) {
       systemPrompt += `\n\n---\n### 오늘의 시장 동향 (참고용)\n${digest}`;
@@ -133,18 +144,23 @@ export async function POST(req: NextRequest) {
       systemPrompt += docContext;
     }
 
-    const response = await client.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...messages.map((m: { role: string; content: string }) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        })),
-      ],
+    if (youtubeContext) {
+      systemPrompt += youtubeContext;
+    }
+
+    const response = await client.responses.create({
+      model: "o4-mini",
+      tools: [{ type: "web_search_preview" }],
+      tool_choice: "required",
+      reasoning: { effort: "high" },
+      instructions: systemPrompt,
+      input: messages.map((m: { role: string; content: string }) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
     });
 
-    const reply = response.choices[0].message.content;
+    const reply = response.output_text ?? "";
     return NextResponse.json({ reply });
   } catch (error) {
     console.error("OpenAI API 오류:", error);

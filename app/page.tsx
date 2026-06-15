@@ -7,14 +7,16 @@ import NewsPage from "@/components/NewsPage";
 import Journal from "@/components/Journal";
 import DocumentsPage from "@/components/DocumentsPage";
 import ConversationSidebar from "@/components/ConversationSidebar";
+import YoutubeIngest from "@/components/YoutubeIngest";
 
-type Tab = "chat" | "news" | "journal" | "docs";
+type Tab = "chat" | "news" | "journal" | "docs" | "youtube";
 
 const TAB_LABELS: Record<Tab, string> = {
   chat: "채팅",
   news: "뉴스",
   journal: "투자 일지",
   docs: "리서치 문서",
+  youtube: "유튜브 학습",
 };
 
 export default function Home() {
@@ -84,7 +86,7 @@ export default function Home() {
 
         <div className="flex items-center gap-1">
           <nav className="flex gap-1 mr-2">
-            {(["chat", "news", "journal", "docs"] as Tab[]).map((tab) => (
+            {(["chat", "news", "journal", "docs", "youtube"] as Tab[]).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -164,6 +166,13 @@ export default function Home() {
         {activeTab === "docs" && (
           <div className="flex-1 overflow-hidden">
             <DocumentsPage />
+          </div>
+        )}
+
+        {/* 유튜브 학습 탭 */}
+        {activeTab === "youtube" && (
+          <div className="flex-1 overflow-hidden">
+            <YoutubeIngest />
           </div>
         )}
       </main>

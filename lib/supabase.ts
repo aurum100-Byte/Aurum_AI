@@ -46,6 +46,15 @@ export type DocumentEntry = {
   tags: string[];
 };
 
+export type YoutubeChannel = {
+  id: string;
+  channel_id: string;
+  channel_name: string;
+  channel_url: string;
+  video_count: number;
+  created_at: string;
+};
+
 function createSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
