@@ -42,7 +42,7 @@ async function embedChunks(chunks: string[]): Promise<number[][]> {
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
-  const { channelUrl } = await req.json();
+  const { channelUrl, startIndex = 0, batchSize = 10 } = await req.json();
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -58,7 +58,9 @@ export async function POST(req: NextRequest): Promise<Response> {
         const youtube = google.youtube({ version: "v3", auth: process.env.YOUTUBE_API_KEY });
         const parsed = parseChannelUrl(channelUrl);
 
-        send({ type: "status", message: "채널 정보 확인 중..." });
+        if (startIndex === 0) {
+          send({ type: "status", message: "채널 정보 확인 중..." });
+        }
 
         const channelRes = await youtube.channels.list({
           part: ["contentDetails", "snippet"],
@@ -73,12 +75,13 @@ export async function POST(req: NextRequest): Promise<Response> {
         const uploadsPlaylistId = channel.contentDetails?.relatedPlaylists?.uploads;
         if (!uploadsPlaylistId) throw new Error("업로드 플레이리스트를 찾을 수 없어.");
 
-        await supabase.from("youtube_channels").upsert(
-          { channel_id: channelId, channel_name: channelName, channel_url: channelUrl },
-          { onConflict: "channel_id" }
-        );
-
-        send({ type: "status", message: "영상 목록 수집 중..." });
+        if (startIndex === 0) {
+          await supabase.from("youtube_channels").upsert(
+            { channel_id: channelId, channel_name: channelName, channel_url: channelUrl },
+            { onConflict: "channel_id" }
+          );
+          send({ type: "status", message: "영상 목록 수집 중..." });
+        }
 
         type VideoItem = { videoId: string; title: string; publishedAt: string };
         const videos: VideoItem[] = [];
@@ -101,11 +104,18 @@ export async function POST(req: NextRequest): Promise<Response> {
           pageToken = playlistRes.data.nextPageToken || undefined;
         } while (pageToken);
 
-        send({ type: "status", message: `총 ${videos.length}개 영상 발견. 처리 시작...`, total: videos.length });
+        const total = videos.length;
+        const batch = videos.slice(startIndex, startIndex + batchSize);
+        const nextIndex = startIndex + batchSize;
+        const isLast = nextIndex >= total;
+
+        if (startIndex === 0) {
+          send({ type: "status", message: `총 ${total}개 영상 발견. 처리 시작...`, total });
+        }
 
         let processed = 0, skipped = 0, failed = 0;
 
-        for (const { videoId, title, publishedAt } of videos) {
+        for (const { videoId, title, publishedAt } of batch) {
           const { data: existing } = await supabase
             .from("youtube_videos")
             .select("video_id")
@@ -114,7 +124,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
           if (existing) {
             skipped++;
-            send({ type: "progress", current: processed + skipped + failed, total: videos.length, message: `[스킵] ${title}` });
+            send({ type: "progress", current: startIndex + processed + skipped + failed, total, message: `[스킵] ${title}` });
             continue;
           }
 
@@ -142,25 +152,35 @@ export async function POST(req: NextRequest): Promise<Response> {
             );
 
             processed++;
-            send({ type: "progress", current: processed + skipped + failed, total: videos.length, message: `[완료] ${title}` });
+            send({ type: "progress", current: startIndex + processed + skipped + failed, total, message: `[완료] ${title}` });
           } catch {
             failed++;
-            send({ type: "progress", current: processed + skipped + failed, total: videos.length, message: `[자막없음] ${title}` });
+            send({ type: "progress", current: startIndex + processed + skipped + failed, total, message: `[자막없음] ${title}` });
           }
 
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, 100));
         }
 
-        await supabase
-          .from("youtube_channels")
-          .update({ video_count: processed })
-          .eq("channel_id", channelId);
+        if (isLast) {
+          await supabase
+            .from("youtube_channels")
+            .update({ video_count: processed })
+            .eq("channel_id", channelId);
 
-        send({
-          type: "done",
-          message: `완료! ${processed}개 처리 / ${skipped}개 이미 됨 / ${failed}개 자막없음`,
-          processed, skipped, failed,
-        });
+          send({
+            type: "done",
+            message: `모두 완료! ${processed}개 처리 / ${skipped}개 이미 됨 / ${failed}개 자막없음`,
+            processed, skipped, failed,
+          });
+        } else {
+          send({
+            type: "batch-done",
+            nextIndex,
+            total,
+            message: `${nextIndex}/${total} 진행 중...`,
+            processed, skipped, failed,
+          });
+        }
       } catch (err) {
         send({ type: "error", message: err instanceof Error ? err.message : "알 수 없는 오류" });
       } finally {

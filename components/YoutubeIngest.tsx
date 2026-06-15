@@ -4,10 +4,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { YoutubeChannel } from "@/lib/supabase";
 
 type SSEEvent = {
-  type: "status" | "progress" | "done" | "error";
+  type: "status" | "progress" | "done" | "batch-done" | "error";
   message: string;
   current?: number;
   total?: number;
+  nextIndex?: number;
   processed?: number;
   skipped?: number;
   failed?: number;
@@ -50,11 +51,11 @@ export default function YoutubeIngest() {
     setLogs([]);
     setProgress(null);
 
-    try {
+    const runBatch = async (startIndex: number): Promise<void> => {
       const res = await fetch("/api/youtube/ingest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channelUrl: channelUrl.trim() }),
+        body: JSON.stringify({ channelUrl: channelUrl.trim(), startIndex, batchSize: 10 }),
       });
 
       if (!res.body) throw new Error("스트림 없음");
@@ -62,6 +63,7 @@ export default function YoutubeIngest() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let nextIndex: number | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -75,11 +77,20 @@ export default function YoutubeIngest() {
           if (!line.startsWith("data: ")) continue;
           try {
             const event: SSEEvent = JSON.parse(line.slice(6));
-            setLogs((prev) => [...prev, { text: event.message, type: event.type }]);
 
-            if (event.type === "progress" && event.current !== undefined && event.total !== undefined) {
-              setProgress({ current: event.current, total: event.total });
+            if (event.type !== "batch-done") {
+              setLogs((prev) => [...prev, { text: event.message, type: event.type }]);
             }
+
+            if ((event.type === "progress" || event.type === "batch-done") &&
+                event.current !== undefined && event.total !== undefined) {
+              setProgress({ current: event.current ?? (event.nextIndex ?? 0), total: event.total });
+            }
+
+            if (event.type === "batch-done" && event.nextIndex !== undefined) {
+              nextIndex = event.nextIndex;
+            }
+
             if (event.type === "done") {
               setProgress(null);
               await loadChannels();
@@ -90,6 +101,15 @@ export default function YoutubeIngest() {
           }
         }
       }
+
+      // 다음 배치 자동 실행
+      if (nextIndex !== null) {
+        await runBatch(nextIndex);
+      }
+    };
+
+    try {
+      await runBatch(0);
     } catch (err) {
       setLogs((prev) => [
         ...prev,
