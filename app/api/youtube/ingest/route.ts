@@ -171,13 +171,13 @@ async function handleProcess(body: {
         let processed = 0, skipped = 0, failed = 0;
 
         for (const { videoId, title, publishedAt } of videos) {
-          const { data: existing } = await supabase!
-            .from("youtube_videos")
-            .select("video_id")
-            .eq("video_id", videoId)
-            .maybeSingle();
+          // 자막이 이미 저장된 영상만 스킵 (youtube_videos 기준이면 자막 없는 영상도 스킵돼서 버그)
+          const { count: transcriptCount } = await supabase!
+            .from("youtube_transcripts")
+            .select("id", { count: "exact", head: true })
+            .eq("video_id", videoId);
 
-          if (existing) {
+          if (transcriptCount && transcriptCount > 0) {
             skipped++;
             send({
               type: "progress",
