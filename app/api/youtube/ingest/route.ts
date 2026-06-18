@@ -40,6 +40,30 @@ async function embedChunks(chunks: string[]): Promise<number[][]> {
   return all;
 }
 
+// 자막 언어 감지: ko → en → 기본값 순으로 시도
+async function fetchTranscriptWithLang(
+  videoId: string
+): Promise<{ text: string; language: string }> {
+  const attempts: Array<{ lang: string; label: string }> = [
+    { lang: "ko", label: "ko" },
+    { lang: "en", label: "en" },
+  ];
+  for (const { lang, label } of attempts) {
+    try {
+      const arr = await YoutubeTranscript.fetchTranscript(videoId, { lang });
+      const text = arr.map((t) => t.text).join(" ").replace(/\s+/g, " ").trim();
+      if (text) return { text, language: label };
+    } catch {
+      // 다음 언어 시도
+    }
+  }
+  // 언어 지정 없이 마지막 시도
+  const arr = await YoutubeTranscript.fetchTranscript(videoId);
+  const text = arr.map((t) => t.text).join(" ").replace(/\s+/g, " ").trim();
+  if (!text) throw new Error("자막 없음");
+  return { text, language: "unknown" };
+}
+
 type VideoItem = { videoId: string; title: string; publishedAt: string };
 
 async function ytFetch(path: string): Promise<Record<string, unknown>> {
@@ -62,7 +86,6 @@ async function handleScan(channelUrl: string): Promise<Response> {
 
     const parsed = parseChannelUrl(channelUrl);
 
-    // 채널 정보 조회
     const channelQuery = parsed.handle
       ? `/channels?part=contentDetails,snippet&forHandle=${encodeURIComponent(parsed.handle)}`
       : `/channels?part=contentDetails,snippet&id=${encodeURIComponent(parsed.channelId!)}`;
@@ -82,13 +105,11 @@ async function handleScan(channelUrl: string): Promise<Response> {
     const channelName = channel.snippet.title;
     const uploadsPlaylistId = channel.contentDetails.relatedPlaylists.uploads;
 
-    // 채널 저장
     await supabase.from("youtube_channels").upsert(
       { channel_id: channelId, channel_name: channelName, channel_url: channelUrl },
       { onConflict: "channel_id" }
     );
 
-    // 전체 영상 목록 수집
     const videos: VideoItem[] = [];
     let pageToken: string | undefined;
 
@@ -168,9 +189,7 @@ async function handleProcess(body: {
           }
 
           try {
-            const transcriptArr = await YoutubeTranscript.fetchTranscript(videoId);
-            const fullText = transcriptArr.map((t) => t.text).join(" ").replace(/\s+/g, " ").trim();
-            if (!fullText) throw new Error("자막 없음");
+            const { text: fullText, language } = await fetchTranscriptWithLang(videoId);
 
             const chunks = chunkText(fullText);
             const embeddings = await embedChunks(chunks);
@@ -182,6 +201,10 @@ async function handleProcess(body: {
                 chunk_text: chunk,
                 embedding: embeddings[idx],
                 chunk_index: idx,
+                channel_name: channelName,
+                video_url: `https://youtube.com/watch?v=${videoId}`,
+                language,
+                published_at: publishedAt || null,
               }))
             );
 
@@ -195,7 +218,7 @@ async function handleProcess(body: {
               type: "progress",
               current: processedSoFar + processed + skipped + failed,
               total: totalCount,
-              message: `[완료] ${title}`,
+              message: `[완료] ${title} (${language})`,
             });
           } catch {
             failed++;
