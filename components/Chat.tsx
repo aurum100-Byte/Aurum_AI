@@ -210,7 +210,13 @@ export default function Chat({
           conversationId: convId,
         }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: { reply?: string; error?: string };
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("응답 시간이 너무 걸렸어. 다시 시도해봐.");
+      }
       if (data.error) throw new Error(data.error);
 
       const reply = data.reply as string;

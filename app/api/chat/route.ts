@@ -152,7 +152,7 @@ export async function POST(req: NextRequest) {
       model: "o4-mini",
       tools: [{ type: "web_search_preview" }],
       tool_choice: "auto",
-      reasoning: { effort: "high" },
+      reasoning: { effort: "low" },
       instructions: systemPrompt,
       input: messages.map((m: { role: string; content: string }) => ({
         role: m.role as "user" | "assistant",
