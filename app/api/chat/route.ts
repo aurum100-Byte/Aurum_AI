@@ -151,7 +151,7 @@ export async function POST(req: NextRequest) {
     const response = await client.responses.create({
       model: "o4-mini",
       tools: [{ type: "web_search_preview" }],
-      tool_choice: "required",
+      tool_choice: "auto",
       reasoning: { effort: "high" },
       instructions: systemPrompt,
       input: messages.map((m: { role: string; content: string }) => ({
