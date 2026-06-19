@@ -34,15 +34,9 @@ export async function searchYoutubeContext(query: string): Promise<string> {
     if (error || !data || data.length === 0) return "";
 
     return (
-      "\n\n### 📺 관련 유튜브 내용 (저장된 채널 영상 기반)\n" +
+      "\n\n### 참고 자료 (출처는 사용자가 물어볼 때만 언급할 것. 먼저 말하지 마)\n" +
       (data as SearchResult[])
-        .map((item) => {
-          const date = item.published_at
-            ? new Date(item.published_at).toLocaleDateString("ko-KR")
-            : null;
-          const meta = [item.channel_name, date].filter(Boolean).join(" / ");
-          return `[${meta ? meta + " / " : ""}${item.video_title}]\n${item.chunk_text}`;
-        })
+        .map((item) => item.chunk_text)
         .join("\n\n")
     );
   } catch {
