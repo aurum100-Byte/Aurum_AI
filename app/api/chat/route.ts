@@ -163,10 +163,8 @@ export async function POST(req: NextRequest) {
     const reply = response.output_text ?? "";
     return NextResponse.json({ reply });
   } catch (error) {
-    console.error("OpenAI API 오류:", error);
-    return NextResponse.json(
-      { error: "AI 응답 중 오류가 발생했습니다." },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Chat API 오류:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
