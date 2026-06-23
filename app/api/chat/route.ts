@@ -8,6 +8,23 @@ export const maxDuration = 60;
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// web_search_preview 툴을 쓰면 모델이 프롬프트 지시를 무시하고 마크다운 링크/출처를
+// 본문에 박아넣는 경우가 많아서, 응답 텍스트에서 링크를 강제로 제거한다.
+function stripCitations(text: string): string {
+  return text
+    // [도메인](https://...) 형태의 마크다운 링크 → 통째로 제거
+    .replace(/\[[^\]]*\]\(https?:\/\/[^\s)]+\)/g, "")
+    // 링크 제거 후 남는 빈 괄호/쉼표 묶음 제거: (), (, ), (, , )
+    .replace(/\(\s*(?:,\s*)*\)/g, "")
+    // 혹시 남는 raw URL 제거
+    .replace(/https?:\/\/[^\s)]+/g, "")
+    // 정리: 중복 공백, 문장부호 앞 공백
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([.,!?])/g, "$1")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
+}
+
 async function getLatestDigest(): Promise<string> {
   if (!supabase) return "";
 
@@ -160,7 +177,7 @@ export async function POST(req: NextRequest) {
       })),
     });
 
-    const reply = response.output_text ?? "";
+    const reply = stripCitations(response.output_text ?? "");
     return NextResponse.json({ reply });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
