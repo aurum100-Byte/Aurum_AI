@@ -1,80 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { YoutubeTranscript } from "youtube-transcript";
-import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
+import {
+  parseChannelUrl,
+  ytFetch,
+  ingestVideo,
+  type VideoItem,
+} from "@/lib/youtubeIngest";
 
 export const maxDuration = 60;
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-function parseChannelUrl(url: string): { channelId?: string; handle?: string } {
-  const trimmed = url.trim();
-  if (trimmed.startsWith("@")) return { handle: trimmed.slice(1) };
-  const handleMatch = trimmed.match(/@([^/?&\s]+)/);
-  if (handleMatch) return { handle: handleMatch[1] };
-  const channelIdMatch = trimmed.match(/channel\/([^/?&\s]+)/);
-  if (channelIdMatch) return { channelId: channelIdMatch[1] };
-  throw new Error("지원하지 않는 URL 형식. @handle 또는 /channel/ID 형태로 입력해줘.");
-}
-
-function chunkText(text: string, size = 500, overlap = 50): string[] {
-  const chunks: string[] = [];
-  let start = 0;
-  while (start < text.length) {
-    chunks.push(text.slice(start, Math.min(start + size, text.length)));
-    start += size - overlap;
-  }
-  return chunks.filter((c) => c.trim().length > 30);
-}
-
-async function embedChunks(chunks: string[]): Promise<number[][]> {
-  const BATCH = 100;
-  const all: number[][] = [];
-  for (let i = 0; i < chunks.length; i += BATCH) {
-    const res = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: chunks.slice(i, i + BATCH),
-    });
-    all.push(...res.data.map((d) => d.embedding));
-  }
-  return all;
-}
-
-// 자막 언어 감지: ko → en → 기본값 순으로 시도
-async function fetchTranscriptWithLang(
-  videoId: string
-): Promise<{ text: string; language: string }> {
-  const attempts: Array<{ lang: string; label: string }> = [
-    { lang: "ko", label: "ko" },
-    { lang: "en", label: "en" },
-  ];
-  for (const { lang, label } of attempts) {
-    try {
-      const arr = await YoutubeTranscript.fetchTranscript(videoId, { lang });
-      const text = arr.map((t) => t.text).join(" ").replace(/\s+/g, " ").trim();
-      if (text) return { text, language: label };
-    } catch {
-      // 다음 언어 시도
-    }
-  }
-  // 언어 지정 없이 마지막 시도
-  const arr = await YoutubeTranscript.fetchTranscript(videoId);
-  const text = arr.map((t) => t.text).join(" ").replace(/\s+/g, " ").trim();
-  if (!text) throw new Error("자막 없음");
-  return { text, language: "unknown" };
-}
-
-type VideoItem = { videoId: string; title: string; publishedAt: string };
-
-async function ytFetch(path: string): Promise<Record<string, unknown>> {
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  const res = await fetch(`https://www.googleapis.com/youtube/v3${path}&key=${apiKey}`);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: { message?: string } }).error?.message || `YouTube API 오류 ${res.status}`);
-  }
-  return res.json();
-}
 
 // ── 1단계: 채널 스캔 ─────────────────────────────────────────────────
 async function handleScan(channelUrl: string): Promise<Response> {
@@ -106,7 +39,13 @@ async function handleScan(channelUrl: string): Promise<Response> {
     const uploadsPlaylistId = channel.contentDetails.relatedPlaylists.uploads;
 
     await supabase.from("youtube_channels").upsert(
-      { channel_id: channelId, channel_name: channelName, channel_url: channelUrl },
+      {
+        channel_id: channelId,
+        channel_name: channelName,
+        channel_url: channelUrl,
+        uploads_playlist_id: uploadsPlaylistId,
+        is_active: true,
+      },
       { onConflict: "channel_id" }
     );
 
@@ -170,7 +109,8 @@ async function handleProcess(body: {
       try {
         let processed = 0, skipped = 0, failed = 0;
 
-        for (const { videoId, title, publishedAt } of videos) {
+        for (const video of videos) {
+          const { videoId, title } = video;
           // 자막이 이미 저장된 영상만 스킵 (youtube_videos 기준이면 자막 없는 영상도 스킵돼서 버그)
           const { count: transcriptCount } = await supabase!
             .from("youtube_transcripts")
@@ -188,39 +128,17 @@ async function handleProcess(body: {
             continue;
           }
 
-          try {
-            const { text: fullText, language } = await fetchTranscriptWithLang(videoId);
+          const result = await ingestVideo(channelId, channelName, video);
 
-            const chunks = chunkText(fullText);
-            const embeddings = await embedChunks(chunks);
-
-            await supabase!.from("youtube_transcripts").insert(
-              chunks.map((chunk, idx) => ({
-                video_id: videoId,
-                video_title: title,
-                chunk_text: chunk,
-                embedding: embeddings[idx],
-                chunk_index: idx,
-                channel_name: channelName,
-                video_url: `https://youtube.com/watch?v=${videoId}`,
-                language,
-                published_at: publishedAt || null,
-              }))
-            );
-
-            await supabase!.from("youtube_videos").upsert(
-              { channel_id: channelId, video_id: videoId, title, published_at: publishedAt || null },
-              { onConflict: "video_id" }
-            );
-
+          if (result.status === "saved") {
             processed++;
             send({
               type: "progress",
               current: processedSoFar + processed + skipped + failed,
               total: totalCount,
-              message: `[완료] ${title} (${language})`,
+              message: `[완료] ${title} (${result.language})`,
             });
-          } catch {
+          } else {
             failed++;
             send({
               type: "progress",
@@ -234,9 +152,25 @@ async function handleProcess(body: {
         }
 
         if (isLast) {
+          const { data: videoRows } = await supabase!
+            .from("youtube_videos")
+            .select("video_id, published_at")
+            .eq("channel_id", channelId);
+
+          const videoCount = videoRows?.length ?? 0;
+          const lastSyncedVideoAt = (videoRows || [])
+            .map((v) => v.published_at)
+            .filter((v): v is string => !!v)
+            .sort()
+            .pop();
+
           await supabase!
             .from("youtube_channels")
-            .update({ video_count: processed })
+            .update({
+              video_count: videoCount,
+              last_synced_at: new Date().toISOString(),
+              last_synced_video_at: lastSyncedVideoAt || null,
+            })
             .eq("channel_id", channelId);
 
           send({ type: "done", message: `${channelName} 학습 완료!`, processed, skipped, failed });

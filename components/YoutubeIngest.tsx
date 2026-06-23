@@ -21,6 +21,8 @@ export default function YoutubeIngest() {
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [channels, setChannels] = useState<YoutubeChannel[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const loadChannels = useCallback(async () => {
@@ -144,6 +146,36 @@ export default function YoutubeIngest() {
     }
   };
 
+  const handleSyncNow = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    setSyncMessage(null);
+    try {
+      const res = await fetch("/api/youtube/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `동기화 실패 (${res.status})`);
+
+      const summaries = (data.summaries || []) as Array<{
+        channelName: string;
+        newVideos: number;
+        savedChunks: number;
+        errors: number;
+        error?: string;
+      }>;
+      const totalNew = summaries.reduce((sum, s) => sum + s.newVideos, 0);
+      setSyncMessage(
+        totalNew === 0
+          ? "새 영상 없음. 모두 최신 상태야."
+          : `${summaries.length}개 채널 확인, 새 영상 ${totalNew}개 저장 완료.`
+      );
+      await loadChannels();
+    } catch (err) {
+      setSyncMessage(`동기화 오류: ${err instanceof Error ? err.message : "알 수 없는 오류"}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleDelete = async (channelId: string, channelName: string) => {
     if (!confirm(`"${channelName}" 채널의 모든 학습 데이터를 삭제할까요?`)) return;
     await fetch(`/api/youtube/channels?channelId=${channelId}`, { method: "DELETE" });
@@ -228,7 +260,17 @@ export default function YoutubeIngest() {
 
       {/* 등록된 채널 목록 */}
       <div className="space-y-2">
-        <h3 className="text-xs text-zinc-400 tracking-widest">등록된 채널</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs text-zinc-400 tracking-widest">등록된 채널</h3>
+          <button
+            onClick={handleSyncNow}
+            disabled={isSyncing}
+            className="px-3 py-1.5 text-xs border border-zinc-700 text-zinc-300 hover:border-green-700 hover:text-green-400 disabled:opacity-50 transition-colors"
+          >
+            {isSyncing ? "동기화 중..." : "지금 새 영상 동기화"}
+          </button>
+        </div>
+        {syncMessage && <p className="text-xs text-zinc-500">{syncMessage}</p>}
 
         {loadingChannels ? (
           <p className="text-xs text-zinc-600 animate-pulse">불러오는 중...</p>

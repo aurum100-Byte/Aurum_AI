@@ -53,6 +53,10 @@ export type YoutubeChannel = {
   channel_url: string;
   video_count: number;
   created_at: string;
+  uploads_playlist_id: string | null;
+  is_active: boolean;
+  last_synced_at: string | null;
+  last_synced_video_at: string | null;
 };
 
 function createSupabaseClient() {
