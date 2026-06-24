@@ -94,7 +94,15 @@ export async function ingestVideo(
     const chunks = chunkText(fullText);
     const embeddings = await embedChunks(chunks);
 
-    await supabase.from("youtube_transcripts").insert(
+    // youtube_transcripts.video_id가 youtube_videos(video_id)를 참조하는 FK라서
+    // youtube_videos를 먼저 채워둬야 transcripts insert가 통과한다.
+    const { error: videoError } = await supabase.from("youtube_videos").upsert(
+      { channel_id: channelId, video_id: videoId, title, published_at: publishedAt || null },
+      { onConflict: "video_id" }
+    );
+    if (videoError) throw videoError;
+
+    const { error: transcriptError } = await supabase.from("youtube_transcripts").insert(
       chunks.map((chunk, idx) => ({
         video_id: videoId,
         video_title: title,
@@ -107,14 +115,11 @@ export async function ingestVideo(
         published_at: publishedAt || null,
       }))
     );
-
-    await supabase.from("youtube_videos").upsert(
-      { channel_id: channelId, video_id: videoId, title, published_at: publishedAt || null },
-      { onConflict: "video_id" }
-    );
+    if (transcriptError) throw transcriptError;
 
     return { status: "saved", language, chunkCount: chunks.length };
-  } catch {
+  } catch (err) {
+    console.error(`[youtube-ingest] ${title} (${videoId}) 저장 실패:`, err);
     return { status: "no_transcript" };
   }
 }

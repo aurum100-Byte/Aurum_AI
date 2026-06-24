@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { supabase } from "@/lib/supabase";
+import { embedDocument } from "@/lib/documentEmbedding";
 
 export const maxDuration = 60;
 
@@ -85,14 +86,26 @@ export async function POST(req: NextRequest) {
 
     const analysis = await analyzeDocument(text, fileName);
 
-    const { error } = await supabase.from("documents").insert({
+    const docFields = {
       file_name: fileName,
+      objective_data: (analysis.objective_data as string) || "",
+      subjective_opinion: (analysis.subjective_opinion as string) || "",
+      ai_opinion: (analysis.ai_opinion as string) || "",
+      summary: (analysis.summary as string) || "",
+      tags: Array.isArray(analysis.tags) ? (analysis.tags as string[]) : [],
+    };
+
+    let embedding: number[] | null = null;
+    try {
+      embedding = await embedDocument(docFields);
+    } catch (err) {
+      console.error("문서 임베딩 생성 실패 (검색에서만 누락, 문서는 저장됨):", err);
+    }
+
+    const { error } = await supabase.from("documents").insert({
+      ...docFields,
       content: text.substring(0, 100000),
-      objective_data: analysis.objective_data || "",
-      subjective_opinion: analysis.subjective_opinion || "",
-      ai_opinion: analysis.ai_opinion || "",
-      summary: analysis.summary || "",
-      tags: Array.isArray(analysis.tags) ? analysis.tags : [],
+      embedding,
     });
 
     if (error) {

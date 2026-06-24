@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { INVESTMENT_SYSTEM_PROMPT } from "@/lib/systemPrompt";
 import { supabase, type JournalEntry } from "@/lib/supabase";
 import { searchYoutubeContext } from "@/lib/youtube-rag";
+import { searchDocumentContext } from "@/lib/document-rag";
 
 export const maxDuration = 60;
 
@@ -65,35 +66,6 @@ async function getJournalContext(): Promise<string> {
   );
 }
 
-async function getDocumentContext(): Promise<string> {
-  if (!supabase) return "";
-
-  const { data } = await supabase
-    .from("documents")
-    .select("file_name, summary, tags, objective_data, subjective_opinion, ai_opinion, created_at")
-    .order("created_at", { ascending: false })
-    .limit(5);
-
-  if (!data || data.length === 0) return "";
-
-  return (
-    "\n\n### 저장된 리서치 문서\n" +
-    data
-      .map((d) => {
-        const date = new Date(d.created_at).toLocaleDateString("ko-KR");
-        return (
-          `[${d.file_name}] (${date})\n` +
-          `태그: ${d.tags?.join(", ") || "-"}\n` +
-          `요약: ${(d.summary || "-").substring(0, 300)}\n` +
-          `팩트: ${(d.objective_data || "-").substring(0, 300)}\n` +
-          `작성자 의견: ${(d.subjective_opinion || "-").substring(0, 300)}\n` +
-          `AI 의견: ${(d.ai_opinion || "-").substring(0, 400)}`
-        );
-      })
-      .join("\n\n")
-  );
-}
-
 async function getPreviousSummaries(currentConvId?: string): Promise<string> {
   if (!supabase) return "";
 
@@ -133,7 +105,7 @@ export async function POST(req: NextRequest) {
       getLatestDigest(),
       includeJournal ? getJournalContext() : Promise.resolve(""),
       getPreviousSummaries(conversationId),
-      getDocumentContext(),
+      searchDocumentContext(lastUserMessage),
       searchYoutubeContext(lastUserMessage),
     ]);
 
