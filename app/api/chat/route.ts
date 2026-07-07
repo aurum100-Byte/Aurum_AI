@@ -66,6 +66,23 @@ async function getJournalContext(): Promise<string> {
   );
 }
 
+async function getRegisteredChannels(): Promise<string> {
+  if (!supabase) return "";
+
+  const { data } = await supabase
+    .from("youtube_channels")
+    .select("channel_name, channel_url")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+
+  if (!data || data.length === 0) return "";
+
+  return (
+    "\n\n### 등록된 유튜브 채널 목록\n" +
+    data.map((c) => `- ${c.channel_name}`).join("\n")
+  );
+}
+
 async function getPreviousSummaries(currentConvId?: string): Promise<string> {
   if (!supabase) return "";
 
@@ -101,10 +118,11 @@ export async function POST(req: NextRequest) {
     }
 
     const lastUserMessage = messages[messages.length - 1]?.content || "";
-    const [digest, journalContext, prevSummaries, docContext, youtubeContext] = await Promise.all([
+    const [digest, journalContext, prevSummaries, registeredChannels, docContext, youtubeContext] = await Promise.all([
       getLatestDigest(),
       includeJournal ? getJournalContext() : Promise.resolve(""),
       getPreviousSummaries(conversationId),
+      getRegisteredChannels(),
       searchDocumentContext(lastUserMessage),
       searchYoutubeContext(lastUserMessage),
     ]);
@@ -127,6 +145,10 @@ export async function POST(req: NextRequest) {
 
     if (prevSummaries) {
       systemPrompt += prevSummaries;
+    }
+
+    if (registeredChannels) {
+      systemPrompt += registeredChannels;
     }
 
     if (docContext) {
