@@ -13,13 +13,15 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // 본문에 박아넣는 경우가 많아서, 응답 텍스트에서 링크를 강제로 제거한다.
 function stripCitations(text: string): string {
   return text
-    // [도메인](https://...) 형태의 마크다운 링크 → 통째로 제거
+    // ([domain](https://...)) — 바깥 괄호까지 통째로 제거
+    .replace(/\(\[([^\]]*)\]\(https?:\/\/[^\s)]+\)\)/g, "")
+    // [text](https://...) — 마크다운 링크
     .replace(/\[[^\]]*\]\(https?:\/\/[^\s)]+\)/g, "")
-    // 링크 제거 후 남는 빈 괄호/쉼표 묶음 제거: (), (, ), (, , )
-    .replace(/\(\s*(?:,\s*)*\)/g, "")
-    // 혹시 남는 raw URL 제거
-    .replace(/https?:\/\/[^\s)]+/g, "")
-    // 정리: 중복 공백, 문장부호 앞 공백
+    // 남은 raw URL
+    .replace(/https?:\/\/\S+/g, "")
+    // 링크 제거 후 남는 빈 괄호
+    .replace(/\(\s*\)/g, "")
+    // 정리
     .replace(/[ \t]{2,}/g, " ")
     .replace(/\s+([.,!?])/g, "$1")
     .replace(/[ \t]+\n/g, "\n")
