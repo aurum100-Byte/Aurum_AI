@@ -4,29 +4,11 @@ import { INVESTMENT_SYSTEM_PROMPT } from "@/lib/systemPrompt";
 import { supabase, type JournalEntry } from "@/lib/supabase";
 import { searchYoutubeContext } from "@/lib/youtube-rag";
 import { searchDocumentContext } from "@/lib/document-rag";
+import { stripCitations } from "@/lib/stripCitations";
 
 export const maxDuration = 60;
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// web_search_preview 툴을 쓰면 모델이 프롬프트 지시를 무시하고 마크다운 링크/출처를
-// 본문에 박아넣는 경우가 많아서, 응답 텍스트에서 링크를 강제로 제거한다.
-function stripCitations(text: string): string {
-  return text
-    // ([domain](https://...)) — 바깥 괄호까지 통째로 제거
-    .replace(/\(\[([^\]]*)\]\(https?:\/\/[^\s)]+\)\)/g, "")
-    // [text](https://...) — 마크다운 링크
-    .replace(/\[[^\]]*\]\(https?:\/\/[^\s)]+\)/g, "")
-    // 남은 raw URL
-    .replace(/https?:\/\/\S+/g, "")
-    // 링크 제거 후 남는 빈 괄호
-    .replace(/\(\s*\)/g, "")
-    // 정리
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\s+([.,!?])/g, "$1")
-    .replace(/[ \t]+\n/g, "\n")
-    .trim();
-}
 
 async function getLatestDigest(): Promise<string> {
   if (!supabase) return "";
@@ -68,20 +50,54 @@ async function getJournalContext(): Promise<string> {
   );
 }
 
-async function getRegisteredChannels(): Promise<string> {
+// 등록 채널 + 채널별 학습된 최신 영상 목록(제목·업로드일)을 시스템 프롬프트에 주입한다.
+// "최근 영상" 질문을 웹 검색(엉뚱한 채널·캐시된 페이지를 집어옴)이 아니라
+// YouTube Data API로 동기화된 실제 DB 데이터 기준으로 답하게 하기 위함.
+async function getYoutubeCatalog(): Promise<string> {
   if (!supabase) return "";
 
-  const { data } = await supabase
+  const { data: channels } = await supabase
     .from("youtube_channels")
-    .select("channel_name, channel_url")
+    .select("channel_id, channel_name")
     .eq("is_active", true)
     .order("created_at", { ascending: true });
 
-  if (!data || data.length === 0) return "";
+  if (!channels || channels.length === 0) return "";
+
+  const { data: videos } = await supabase
+    .from("youtube_videos")
+    .select("channel_id, title, published_at")
+    .in("channel_id", channels.map((c) => c.channel_id))
+    .order("published_at", { ascending: false })
+    .limit(200);
+
+  const byChannel = new Map<string, { title: string; published_at: string | null }[]>();
+  for (const v of videos || []) {
+    const list = byChannel.get(v.channel_id) || [];
+    if (list.length < 5) {
+      list.push(v);
+      byChannel.set(v.channel_id, list);
+    }
+  }
+
+  const lines = channels.map((c) => {
+    const vids = byChannel.get(c.channel_id) || [];
+    if (vids.length === 0) return `- ${c.channel_name}: (아직 학습된 영상 없음)`;
+    return (
+      `- ${c.channel_name}:\n` +
+      vids
+        .map((v) => `    · ${v.published_at?.slice(0, 10) || "날짜 미상"} | ${v.title}`)
+        .join("\n")
+    );
+  });
 
   return (
-    "\n\n### 등록된 유튜브 채널 목록\n" +
-    data.map((c) => `- ${c.channel_name}`).join("\n")
+    "\n\n### 등록된 유튜브 채널과 학습된 최신 영상 (채널당 최근 5개, 실제 DB 데이터)\n" +
+    lines.join("\n") +
+    "\n\n[유튜브 답변 규칙]\n" +
+    "- 등록된 채널의 '최근 영상'류 질문은 반드시 위 목록만 근거로 답해. 웹 검색으로 채널이나 영상을 찾거나 추측하지 마.\n" +
+    "- 위 목록에 없는 영상의 제목·날짜·내용을 절대 만들어내지 마. 목록에 없으면 '아직 학습 안 된 영상'이라고 말해.\n" +
+    "- 영상 내용의 상세는 '참고 자료'의 자막 발췌에 있는 만큼만 말해. 발췌가 없으면 제목만 알고 내용은 모른다고 솔직하게 말해."
   );
 }
 
@@ -120,11 +136,11 @@ export async function POST(req: NextRequest) {
     }
 
     const lastUserMessage = messages[messages.length - 1]?.content || "";
-    const [digest, journalContext, prevSummaries, registeredChannels, docContext, youtubeContext] = await Promise.all([
+    const [digest, journalContext, prevSummaries, youtubeCatalog, docContext, youtubeContext] = await Promise.all([
       getLatestDigest(),
       includeJournal ? getJournalContext() : Promise.resolve(""),
       getPreviousSummaries(conversationId),
-      getRegisteredChannels(),
+      getYoutubeCatalog(),
       searchDocumentContext(lastUserMessage),
       searchYoutubeContext(lastUserMessage),
     ]);
@@ -149,8 +165,8 @@ export async function POST(req: NextRequest) {
       systemPrompt += prevSummaries;
     }
 
-    if (registeredChannels) {
-      systemPrompt += registeredChannels;
+    if (youtubeCatalog) {
+      systemPrompt += youtubeCatalog;
     }
 
     if (docContext) {
